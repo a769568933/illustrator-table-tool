@@ -21,7 +21,8 @@ DocumentAdapter::DocumentAdapter(Suites& suites) :
  document(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)),
  undo(suites.get<AIUndoSuite>(kAIUndoSuite,kAIUndoVersion)),
  ranges(suites.get<ATE::TextRangeSuite>(kTextRangeSuite,kTextRangeSuiteVersion)),
- features(suites.get<ATE::CharFeaturesSuite>(kCharFeaturesSuite,kCharFeaturesSuiteVersion)) {}
+ features(suites.get<ATE::CharFeaturesSuite>(kCharFeaturesSuite,kCharFeaturesSuiteVersion)),
+ stories(suites.get<ATE::StorySuite>(kStorySuite,kStorySuiteVersion)) {}
 AIRealPoint DocumentAdapter::world(const NativeTable& table,table::Point point) const {
     return {static_cast<AIReal>(table.origin.h+point.x),static_cast<AIReal>(table.origin.v-point.y)};
 }
@@ -125,5 +126,10 @@ void DocumentAdapter::beginEdit(const NativeTable& table,table::CellId id) {
     auto found=std::find_if(table.cells.begin(),table.cells.end(),[=](const NativeCell& c){return c.id==id;});
     if(found==table.cells.end()) throw static_cast<ASErr>(kBadParameterErr);
     RangeLease range{ranges}; checked(text->GetATETextRange(found->text,&range.value));
+    ATE::StoryRef story=nullptr; checked(ranges->GetStory(range.value,&story));
+    const auto focusError=document->SetTextFocus(story);
+    stories->Release(story); checked(focusError);
     checked(ranges->Select(range.value,false));
+    AIBoolean focused=false; checked(document->HasTextFocus(&focused));
+    if(!focused) throw static_cast<ASErr>(kCantHappenErr);
 }

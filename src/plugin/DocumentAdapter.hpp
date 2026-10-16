@@ -28,6 +28,7 @@ class DocumentAdapter {
     AIUndoSuite* undo;
     ATE::TextRangeSuite* ranges;
     ATE::CharFeaturesSuite* features;
+    ATE::StorySuite* stories;
     AIRealPoint world(const NativeTable& table, table::Point point) const;
     void rectangle(AIArtHandle path,const NativeTable& table,table::Rect bounds);
     void line(AIArtHandle path,const NativeTable& table,const table::Edge& edge);
