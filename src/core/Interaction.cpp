@@ -18,6 +18,24 @@ void Interaction::pointerDown(const TableModel& model, Point point, bool shift, 
     selected=CellRange{std::min(first->row,cell.row),std::min(first->column,cell.column),
         std::max(first->row+first->rowSpan-1,cell.row+cell.rowSpan-1),
         std::max(first->column+first->columnSpan-1,cell.column+cell.columnSpan-1)};
+    // A rectangular selection must include every merged cell that it touches.
+    bool expanded;
+    do {
+        expanded=false;
+        for (const auto& member:model.cells()) {
+            const int lastRow=member.row+member.rowSpan-1;
+            const int lastColumn=member.column+member.columnSpan-1;
+            if (member.row>selected->lastRow || lastRow<selected->firstRow ||
+                member.column>selected->lastColumn || lastColumn<selected->firstColumn) continue;
+            const CellRange next{std::min(selected->firstRow,member.row),
+                std::min(selected->firstColumn,member.column),
+                std::max(selected->lastRow,lastRow),std::max(selected->lastColumn,lastColumn)};
+            expanded=expanded || next.firstRow!=selected->firstRow ||
+                next.firstColumn!=selected->firstColumn || next.lastRow!=selected->lastRow ||
+                next.lastColumn!=selected->lastColumn;
+            selected=next;
+        }
+    } while (expanded);
 }
 void Interaction::pointerMove(Point point) {
     if (!boundary || !source) return;

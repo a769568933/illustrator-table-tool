@@ -123,6 +123,9 @@ void merging() {
     rejects([&] {model.merge({-1,0,1,1});});
     model.merge({1,1,0,0});
     expect(model.cellAt(1,1).id==a,"range direction normalized");
+    auto selectionModel=TableModel::create(3,3,90,90);selectionModel.merge({0,1,1,2});
+    Interaction selection;selection.pointerDown(selectionModel,{15,15},false,1);selection.pointerDown(selectionModel,{45,75},true,1);
+    expect(selection.selection()->lastColumn==2,"rectangle selection includes entire intersected merged cells");
 }
 void structure() {
     using namespace table;

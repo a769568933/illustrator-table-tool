@@ -43,10 +43,17 @@ jobs:
       - name: Compile Illustrator 2024 x64 plugin with v142
         shell: pwsh
         run: ./scripts/build.ps1 -SdkRoot './.local/sdk/Adobe Illustrator 2024 SDK'
-      - name: Upload development loading probe
+      - name: Verify native binary and package development build
+        shell: pwsh
+        run: |
+          $env:TABLE_TEST_PLUGIN = (Resolve-Path 'build/native/plugin/Release/IllustratorTableTool.aip').Path
+          python -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Native packaging tests failed.' }
+          ./scripts/package.ps1 -PluginPath $env:TABLE_TEST_PLUGIN -OutputDirectory './dist/package'
+      - name: Upload development plugin package
         uses: actions/upload-artifact@v4
         with:
-          name: IllustratorTableTool-loading-probe-win64
-          path: build/native/plugin/Release/IllustratorTableTool.aip
+          name: IllustratorTableTool-development-win64
+          path: dist/package/*
           if-no-files-found: error
           retention-days: 14
