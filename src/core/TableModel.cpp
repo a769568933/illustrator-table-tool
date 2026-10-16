@@ -48,6 +48,14 @@ void TableModel::resizeBoundary(bool vertical, int boundary, double delta) {
     sizes[boundary-1]+=delta;
     if (boundary<static_cast<int>(sizes.size())) sizes[boundary]-=delta;
 }
+void TableModel::scale(double horizontal,double vertical) {
+    if(!std::isfinite(horizontal)||!std::isfinite(vertical)||horizontal<=0||vertical<=0) throw ValidationError("Invalid table scale");
+    auto next=*this;
+    for(auto& value:next.columnWidths) {value*=horizontal;if(!std::isfinite(value)||value+1e-8<minimumTrack) throw ValidationError("Scaled column is too small");value=std::max(value,minimumTrack);}
+    for(auto& value:next.rowHeights) {value*=vertical;if(!std::isfinite(value)||value+1e-8<minimumTrack) throw ValidationError("Scaled row is too small");value=std::max(value,minimumTrack);}
+    if(!std::isfinite(next.width())||!std::isfinite(next.height())) throw ValidationError("Scaled dimensions overflow");
+    *this=std::move(next);
+}
 void TableModel::merge(CellRange range) {
     if(range.firstRow>range.lastRow) std::swap(range.firstRow,range.lastRow);
     if(range.firstColumn>range.lastColumn) std::swap(range.firstColumn,range.lastColumn);

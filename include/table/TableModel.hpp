@@ -26,6 +26,7 @@ public:
     const Cell& cellById(CellId id) const;
     void setText(CellId id, const std::u16string& text);
     void resizeBoundary(bool vertical, int boundary, double delta);
+    void scale(double horizontal,double vertical);
     void merge(CellRange range);
     void split(CellId id);
     void insertRows(int before,int count) { changeTracks(false,before,count,true); }

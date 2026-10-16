@@ -174,6 +174,11 @@ void persistence() {
     rejects([&]{serialize(bad);});
     std::string duplicate="ITT1\n1 2 3\n10\n10 10\n2\n1 0 0 1 1\n0\n\n0\n\n0\n1 0 1 1 1\n0\n\n0\n\n0\n";
     rejects([&]{deserialize(duplicate);});
+    auto scaled=TableModel::create(2,2,100,60); auto scaledId=scaled.cellAt(0,0).id;
+    scaled.setText(scaledId,u"keep");scaled.scale(2,3);
+    expect(close(scaled.width(),200)&&close(scaled.height(),180)&&scaled.cellAt(0,0).text==u"keep","axis scaling preserves cell identity and text");
+    rejects([&]{scaled.scale(0,1);});rejects([&]{scaled.scale(0.001,1);});
+    expect(close(scaled.width(),200),"invalid scale is atomic");
 }
 }
 int main() {

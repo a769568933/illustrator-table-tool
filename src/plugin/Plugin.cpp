@@ -1,6 +1,7 @@
 #include <windows.h>
 #include "Suites.hpp"
 #include "DocumentAdapter.hpp"
+#include "Dialogs.hpp"
 #include "SPInterf.h"
 #include "AIPlugin.h"
 #include "AIMenu.h"
@@ -15,15 +16,19 @@
 #include <cstring>
 #include <exception>
 #include <cmath>
+#include <array>
+#include <algorithm>
 
 extern "C" { AIUnicodeStringSuite* sAIUnicodeString=nullptr; SPBlocksSuite* sSPBlocks=nullptr; }
 namespace {
 bool is(const char* value,const char* expected){ return std::strcmp(value,expected)==0; }
 struct State {
-    AIMenuItemHandle about=nullptr, create=nullptr, edit=nullptr;
+    AIMenuItemHandle parent=nullptr, about=nullptr, create=nullptr, edit=nullptr;
+    std::array<AIMenuItemHandle,9> commands{};
     AIToolHandle tool=nullptr;
     AIAnnotatorHandle annotator=nullptr;
     bool placing=false, selectedTool=false;
+    std::optional<table::TableModel> pending;
     std::vector<NativeTable> tables;
     std::optional<std::size_t> active;
     table::Interaction interaction;
@@ -38,14 +43,21 @@ void invalidate(Suites& suites) {
 }
 void startup(SPMessageData* data,Suites& suites,State& state) {
     auto menus=suites.get<AIMenuSuite>(kAIMenuSuite,kAIMenuVersion);
+    AIPlatformAddMenuItemDataUS parent;parent.groupName=kObjectUtilsMenuGroup;parent.itemText=ai::UnicodeString::FromUTF8("画布表格");
+    checked(menus->AddMenuItem(data->self,"IllustratorTableTool.Menu",&parent,0,&state.parent));
+    AIMenuGroup group=nullptr;checked(menus->AddMenuGroupAsSubMenu("IllustratorTableTool.Commands",0,state.parent,&group));
     auto add=[&](const char* key,const char* title,AIMenuItemHandle* handle) {
-        AIPlatformAddMenuItemDataUS item; item.groupName=kObjectUtilsMenuGroup;
+        AIPlatformAddMenuItemDataUS item; item.groupName="IllustratorTableTool.Commands";
         item.itemText=ai::UnicodeString::FromUTF8(title);
         checked(menus->AddMenuItem(data->self,key,&item,0,handle));
     };
-    add("IllustratorTableTool.About","表格工具：关于…",&state.about);
-    add("IllustratorTableTool.Create","表格工具：新建 2×2 测试表格…",&state.create);
-    add("IllustratorTableTool.Edit","表格工具：选择和调整单元格",&state.edit);
+    add("IllustratorTableTool.About","关于画布表格…",&state.about);
+    add("IllustratorTableTool.Create","新建表格…",&state.create);
+    add("IllustratorTableTool.Edit","选择和调整单元格",&state.edit);
+    const char* names[]={"合并单元格","拆分单元格","在上方插入行","在下方插入行","在左侧插入列","在右侧插入列","删除所选行","删除所选列","转换为普通对象"};
+    for(std::size_t i=0;i<state.commands.size();++i) {
+        auto key="IllustratorTableTool.Command"+std::to_string(i);add(key.c_str(),names[i],&state.commands[i]);
+    }
     AIAddToolData tool;
     tool.title=ai::UnicodeString::FromUTF8("画布表格工具");
     tool.tooltip=ai::UnicodeString::FromUTF8("单击选格；Shift 多选；拖动边线；双击编辑文字");
@@ -71,14 +83,14 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
         state.interaction.cancel(); state.placing=false; invalidate(suites); return;
     }
     if(is(selector,kSelectorAIToolMouseDown)) {
-        if(state.placing) {
-            auto model=table::TableModel::create(2,2,table::mm(80),table::mm(32));
-            for(const auto& cell : model.cells()) model.setText(cell.id,u"双击编辑文字");
+        if(state.placing&&state.pending) {
+            auto model=*state.pending;
             state.tables.push_back(adapter.createTable(model,message->cursor));
-            state.active=state.tables.size()-1; state.interaction.clearSelection(); state.placing=false;
+            state.active=state.tables.size()-1; state.interaction.clearSelection(); state.placing=false;state.pending.reset();
             invalidate(suites); return;
         }
-        auto oldActive=state.active;
+        auto oldGroup=state.active&&*state.active<state.tables.size() ? state.tables[*state.active].group : nullptr;
+        state.tables=adapter.discoverTables();
         state.active.reset();
         for(std::size_t i=state.tables.size();i>0;--i) {
             const auto& table=state.tables[i-1];
@@ -86,8 +98,8 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
             if(table::Geometry::hitTest(table.model,local(table,message->cursor),zoom,3).kind!=table::HitKind::Outside) { state.active=i-1; break; }
         }
         if(!state.active) { state.interaction.cancel(); state.interaction.clearSelection(); invalidate(suites); return; }
-        if(oldActive!=state.active) { state.interaction.clearSelection(); state.lastCell=0; }
         auto& table=state.tables[*state.active];
+        if(oldGroup!=table.group) {state.interaction.clearSelection();state.lastCell=0;}
         auto point=local(table,message->cursor);
         auto hit=table::Geometry::hitTest(table.model,point,zoom,3);
         auto now=GetTickCount64();
@@ -127,6 +139,7 @@ void draw(State& state,Suites& suites,AIAnnotatorMessage* message) {
     if(!state.selectedTool || !state.active || *state.active>=state.tables.size() || !message->drawer) return;
     auto& table=state.tables[*state.active];
     DocumentAdapter adapter(suites); if(!adapter.valid(table)) return;
+    if(!state.interaction.dragging()) adapter.synchronize(table);
     auto views=suites.get<AIDocumentViewSuite>(kAIDocumentViewSuite,kAIDocumentViewVersion);
     auto drawer=suites.get<AIAnnotatorDrawerSuite>(kAIAnnotatorDrawerSuite,kAIAnnotatorDrawerVersion);
     AIRGBColor blue; blue.red=9000; blue.green=32000; blue.blue=65535;
@@ -164,17 +177,53 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
         auto* state=static_cast<State*>(data->globals); if(!state) return kNoErr;
         if(is(caller,kCallerAIMenu)&&is(selector,kSelectorAIGoMenuItem)) {
             auto item=static_cast<AIMenuMessage*>(message)->menuItem;
-            if(item==state->about) MessageBoxW(nullptr,L"AI 画布表格工具 · 交互验证版\n2×2 表格、选择、拖线和原生文字接入测试。\n保存重开、合并拆分及样式仍在开发。",L"AI 画布表格工具",MB_OK|MB_ICONINFORMATION);
+            if(item==state->about) MessageBoxW(nullptr,L"AI 画布表格工具 · 开发版\n单击选格，Shift 多选，拖动边线，双击编辑文字。\n通过“对象 → 画布表格”调整结构。",L"AI 画布表格工具",MB_OK|MB_ICONINFORMATION);
             else if(item==state->create||item==state->edit) {
                 AIDocumentHandle document=nullptr; checked(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)->GetDocument(&document));
                 if(!document) {MessageBoxW(nullptr,L"请先新建或打开 Illustrator 文档。",L"画布表格",MB_OK);return kNoErr;}
+                std::optional<table::TableModel> pending;
+                if(item==state->create) {pending=showCreateTableDialog();if(!pending) return kNoErr;}
+                DocumentAdapter adapter(suites);
+                state->tables=adapter.discoverTables();state->active.reset();state->interaction.clearSelection();
                 checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
-                state->placing=item==state->create;
+                state->pending=std::move(pending);state->placing=state->pending.has_value();
+            } else {
+                auto command=std::find(state->commands.begin(),state->commands.end(),item);
+                if(command==state->commands.end()) return kNoErr;
+                if(!state->active || *state->active>=state->tables.size() || !state->interaction.selection()) {
+                    MessageBoxW(nullptr,L"请先使用表格工具选择单元格。按住 Shift 可选择矩形区域。",L"选择表格区域",MB_OK);return kNoErr;
+                }
+                DocumentAdapter adapter(suites);auto& table=state->tables[*state->active];adapter.synchronize(table);
+                auto selection=*state->interaction.selection();auto model=table.model;
+                const auto index=static_cast<int>(command-state->commands.begin());
+                if(index==0) model.merge(selection);
+                else if(index==1) {
+                    std::vector<table::CellId> cells;
+                    for(int r=selection.firstRow;r<=selection.lastRow;++r) for(int c=selection.firstColumn;c<=selection.lastColumn;++c) {
+                        auto id=model.cellAt(r,c).id;if(std::find(cells.begin(),cells.end(),id)==cells.end()) cells.push_back(id);
+                    }
+                    for(auto id:cells) model.split(id);
+                }
+                else if(index==2) model.insertRows(selection.firstRow,1);
+                else if(index==3) model.insertRows(selection.lastRow+1,1);
+                else if(index==4) model.insertColumns(selection.firstColumn,1);
+                else if(index==5) model.insertColumns(selection.lastColumn+1,1);
+                else if(index==6) model.eraseRows(selection.firstRow,selection.lastRow-selection.firstRow+1);
+                else if(index==7) model.eraseColumns(selection.firstColumn,selection.lastColumn-selection.firstColumn+1);
+                checked(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)->LoseTextFocus());
+                checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
+                if(index==8) {adapter.detach(table);state->active.reset();}
+                else adapter.applyStructure(table,model);
+                state->interaction.clearSelection();invalidate(suites);
             }
         } else if(is(caller,kCallerAITool)) toolEvent(*state,suites,selector,static_cast<AIToolMessage*>(message));
         else if(is(caller,kCallerAIAnnotation)&&is(selector,kSelectorAIDrawAnnotation)) draw(*state,suites,static_cast<AIAnnotatorMessage*>(message));
         return kNoErr;
-    } catch(ASErr error) { return error; }
+    } catch(const table::ValidationError&) {
+        if(is(caller,kCallerAIMenu)) MessageBoxW(nullptr,L"无法执行此操作。请检查选区是否完整、是否会删除整张表，以及表格是否旋转、锁定或缺少对象。",L"检查表格和选区",MB_OK|MB_ICONINFORMATION);
+        return kBadParameterErr;
+    }
+    catch(ASErr error) { return error; }
     catch(const std::exception&) {return kCantHappenErr;}
     catch(...) {return kCantHappenErr;}
 }

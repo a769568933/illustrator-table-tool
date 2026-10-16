@@ -35,7 +35,7 @@ if(TABLE_BUILD_PLUGIN)
       "${ILLUSTRATOR_SDK_ROOT}/tools/pipl/pipl_gen/template_plugin.json")
   configure_file(resources/Plugin.rc.in "${CMAKE_CURRENT_BINARY_DIR}/Plugin.rc" @ONLY)
   set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/Plugin.rc" PROPERTIES OBJECT_DEPENDS "${PIPL_OUTPUT}")
-  add_library(IllustratorTableTool SHARED src/plugin/Plugin.cpp src/plugin/DocumentAdapter.cpp
+  add_library(IllustratorTableTool SHARED src/plugin/Plugin.cpp src/plugin/DocumentAdapter.cpp src/plugin/Dialogs.cpp
     "${ILLUSTRATOR_SDK_ROOT}/illustratorapi/illustrator/IAIUnicodeString.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/Plugin.rc" "${PIPL_OUTPUT}" resources/Plugin.def)
   target_include_directories(IllustratorTableTool PRIVATE
