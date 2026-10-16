@@ -1,5 +1,6 @@
 #include <windows.h>
 #include "DocumentAdapter.hpp"
+#include "Trace.hpp"
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -243,9 +244,11 @@ std::vector<NativeTable> DocumentAdapter::discoverTables() {
 }
 void DocumentAdapter::synchronize(NativeTable& table) {table=readTable(table.group);}
 void DocumentAdapter::applyStructure(NativeTable& table,const table::TableModel& model) {
+    traceStage("structure.begin");
     if(!valid(table)) throw static_cast<ASErr>(kBadParameterErr);
     auto next=table;next.model=model;next.cells.clear();next.edges.clear();
     try {
+        traceStage("structure.cells.start");
         for(const auto& cell:model.cells()) {
             auto existing=std::find_if(table.cells.begin(),table.cells.end(),[&](const NativeCell& value){return value.id==cell.id;});
             if(existing==table.cells.end()) next.cells.push_back(createCell(next,cell));
@@ -260,13 +263,17 @@ void DocumentAdapter::applyStructure(NativeTable& table,const table::TableModel&
             }
         }
         for(auto path:table.edges) checked(art->DisposeArt(path));
+        traceStage("structure.oldEdges.removed");
         for(const auto& edge:table::Geometry::visibleEdges(model)) {
             auto path=newPath(next.group);line(path,next,edge);setPaint(path,false,true,0);
             role(path,"edge:"+std::to_string(next.edges.size()));next.edges.push_back(path);
         }
+        traceStage("structure.newEdges.created");
         applyGeometry(next,model);
+        traceStage("structure.geometry.done");
         styleEdges(next,model);
         auto label=ai::UnicodeString::FromUTF8("修改表格结构");checked(undo->SetUndoTextUS(label,label));table=std::move(next);
+        traceStage("structure.done");
     } catch(...) {undo->UndoChanges();throw;}
 }
 void DocumentAdapter::detach(const NativeTable& table) {

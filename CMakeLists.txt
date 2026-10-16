@@ -16,6 +16,11 @@ if(BUILD_TESTING)
     target_compile_options(table_core_tests PRIVATE /utf-8 /W4)
   endif()
   add_test(NAME table_core COMMAND table_core_tests)
+  add_executable(table_simulator tests/simulator.cpp)
+  target_link_libraries(table_simulator PRIVATE table_core)
+  if(MSVC)
+    target_compile_options(table_simulator PRIVATE /utf-8 /W4)
+  endif()
 endif()
 
 if(TABLE_BUILD_PLUGIN)
@@ -35,7 +40,7 @@ if(TABLE_BUILD_PLUGIN)
       "${ILLUSTRATOR_SDK_ROOT}/tools/pipl/pipl_gen/template_plugin.json")
   configure_file(resources/Plugin.rc.in "${CMAKE_CURRENT_BINARY_DIR}/Plugin.rc" @ONLY)
   set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/Plugin.rc" PROPERTIES OBJECT_DEPENDS "${PIPL_OUTPUT}")
-  add_library(IllustratorTableTool SHARED src/plugin/Plugin.cpp src/plugin/DocumentAdapter.cpp src/plugin/Dialogs.cpp
+  add_library(IllustratorTableTool SHARED src/plugin/Plugin.cpp src/plugin/DocumentAdapter.cpp src/plugin/Dialogs.cpp src/plugin/Sidebar.cpp
     "${ILLUSTRATOR_SDK_ROOT}/illustratorapi/illustrator/IAIUnicodeString.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/Plugin.rc" "${PIPL_OUTPUT}" resources/Plugin.def)
   target_include_directories(IllustratorTableTool PRIVATE
@@ -55,7 +60,7 @@ if(TABLE_BUILD_PLUGIN)
   endif()
   target_compile_options(IllustratorTableTool PRIVATE /utf-8 /Zp8 /Zc:wchar_t- /Zc:sizedDealloc- /EHsc)
   set_property(TARGET IllustratorTableTool PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-  target_link_libraries(IllustratorTableTool PRIVATE user32 comdlg32 table_core)
+  target_link_libraries(IllustratorTableTool PRIVATE user32 gdi32 comdlg32 table_core)
   set_target_properties(IllustratorTableTool PROPERTIES PREFIX "" SUFFIX ".aip"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugin")
 endif()

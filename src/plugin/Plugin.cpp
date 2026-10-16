@@ -2,6 +2,8 @@
 #include "Suites.hpp"
 #include "DocumentAdapter.hpp"
 #include "Dialogs.hpp"
+#include "Sidebar.hpp"
+#include "Trace.hpp"
 #include "SPInterf.h"
 #include "AIPlugin.h"
 #include "AIMenu.h"
@@ -9,6 +11,9 @@
 #include "AITool.h"
 #include "AIToolNames.h"
 #include "AIEvent.h"
+#include "AINotifier.h"
+#include "AIRuntime.h"
+#include "SPAccess.h"
 #include "AIAnnotator.h"
 #include "AIAnnotatorDrawer.h"
 #include "AIDocumentView.h"
@@ -25,6 +30,7 @@ namespace {
 bool is(const char* value,const char* expected){ return std::strcmp(value,expected)==0; }
 struct State {
     AIMenuItemHandle parent=nullptr, about=nullptr, create=nullptr, edit=nullptr;
+    AIMenuItemHandle showSidebar=nullptr;
     std::array<AIMenuItemHandle,10> commands{};
     AIToolHandle tool=nullptr;
     AIAnnotatorHandle annotator=nullptr;
@@ -36,13 +42,41 @@ struct State {
     ULONGLONG lastDown=0;
     table::CellId lastCell=0;
     table::Point lastPoint;
+    Sidebar sidebar;
+    SPBasicSuite* basic=nullptr;
+    SPPluginRef plugin=nullptr;
+    SPAccessRef access=nullptr;
+    AINotifierHandle started=nullptr,shutdown=nullptr;
+    bool mutating=false;
 };
+struct MutationScope {
+    State& state;bool previous;
+    explicit MutationScope(State& value):state(value),previous(value.mutating){state.mutating=true;}
+    ~MutationScope(){state.mutating=previous;}
+};
+void showSidebar(State& state,Suites& suites) {
+    std::array<AIMenuItemHandle,12> items{state.create,state.edit};
+    std::copy(state.commands.begin(),state.commands.end(),items.begin()+2);
+    state.sidebar.create(state.basic,state.plugin,suites,items);state.sidebar.show(suites);
+}
+void updateSidebar(State& state,Suites& suites) {
+    if(!state.active||*state.active>=state.tables.size()||!state.interaction.selection()) {
+        state.sidebar.update(false,state.placing?L"请在画布单击放置新表格。":L"请先使用表格工具选择单元格。\nShift 多选；双击编辑文字。");return;
+    }
+    auto& native=state.tables[*state.active];DocumentAdapter adapter(suites);
+    if(!adapter.valid(native)) {state.sidebar.update(false,L"当前表格不可编辑。\n请检查当前文档、锁定和隐藏状态。");return;}
+    const auto range=*state.interaction.selection();
+    auto message=std::to_wstring(native.model.rows())+L" 行 × "+std::to_wstring(native.model.columns())+L" 列\n选区：行 "+
+        std::to_wstring(range.firstRow+1)+L"–"+std::to_wstring(range.lastRow+1)+L"，列 "+std::to_wstring(range.firstColumn+1)+L"–"+std::to_wstring(range.lastColumn+1);
+    state.sidebar.update(true,message);
+}
 void invalidate(Suites& suites) {
     // Invalidate only on interaction events; never during the draw callback.
     AIRect screen{-32000,-32000,32000,32000};
     checked(suites.get<AIAnnotatorSuite>(kAIAnnotatorSuite,kAIAnnotatorVersion)->InvalAnnotationRect(nullptr,&screen));
 }
 void startup(SPMessageData* data,Suites& suites,State& state) {
+    state.basic=data->basic;state.plugin=data->self;
     auto menus=suites.get<AIMenuSuite>(kAIMenuSuite,kAIMenuVersion);
     AIPlatformAddMenuItemDataUS parent;parent.groupName=kObjectUtilsMenuGroup;parent.itemText=ai::UnicodeString::FromUTF8("画布表格");
     checked(menus->AddMenuItem(data->self,"IllustratorTableTool.Menu",&parent,0,&state.parent));
@@ -59,6 +93,12 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
     for(std::size_t i=0;i<state.commands.size();++i) {
         auto key="IllustratorTableTool.Command"+std::to_string(i);add(key.c_str(),names[i],&state.commands[i]);
     }
+    AIPlatformAddMenuItemDataUS sidebarMenu;sidebarMenu.groupName=kOtherPalettesMenuGroup;sidebarMenu.itemText=ai::UnicodeString::FromUTF8("画布表格");
+    checked(menus->AddMenuItem(data->self,"IllustratorTableTool.Sidebar.Menu",&sidebarMenu,0,&state.showSidebar));
+    auto notifiers=suites.get<AINotifierSuite>(kAINotifierSuite,kAINotifierVersion);
+    checked(notifiers->AddNotifier(data->self,"IllustratorTableTool.Started",kAIApplicationStartedNotifier,&state.started));
+    checked(notifiers->AddNotifier(data->self,"IllustratorTableTool.Shutdown",kAIApplicationShutdownNotifier,&state.shutdown));
+    checked(suites.get<SPAccessSuite>(kSPAccessSuite,kSPAccessSuiteVersion)->AcquirePlugin(data->self,&state.access));
     AIAddToolData tool;
     tool.title=ai::UnicodeString::FromUTF8("画布表格工具");
     tool.tooltip=ai::UnicodeString::FromUTF8("单击选格；Shift 多选；拖动边线；双击编辑文字");
@@ -137,7 +177,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
     (void)annotations;
 }
 void draw(State& state,Suites& suites,AIAnnotatorMessage* message) {
-    if(!state.selectedTool || !state.active || *state.active>=state.tables.size() || !message->drawer) return;
+    if(state.mutating||!state.selectedTool || !state.active || *state.active>=state.tables.size() || !message->drawer) return;
     auto& table=state.tables[*state.active];
     DocumentAdapter adapter(suites); if(!adapter.valid(table)) return;
     if(!state.interaction.dragging()) adapter.synchronize(table);
@@ -183,14 +223,29 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
         if(is(caller,kSPInterfaceCaller)) {
             if(is(selector,kSPInterfaceStartupSelector)) {
                 auto* state=new State; data->globals=state;
-                try { startup(data,suites,*state); } catch(...) {delete state;data->globals=nullptr;throw;}
+                try { startup(data,suites,*state); } catch(...) {
+                    state->sidebar.destroy(suites);
+                    if(state->access) suites.get<SPAccessSuite>(kSPAccessSuite,kSPAccessSuiteVersion)->ReleasePlugin(state->access);
+                    delete state;data->globals=nullptr;throw;
+                }
             } else if(is(selector,kSPInterfaceShutdownSelector)) { delete static_cast<State*>(data->globals);data->globals=nullptr; }
             return kNoErr;
         }
         auto* state=static_cast<State*>(data->globals); if(!state) return kNoErr;
+        if(is(caller,kCallerAINotify)&&is(selector,kSelectorAINotify)) {
+            auto notifier=static_cast<AINotifierMessage*>(message)->notifier;
+            if(notifier==state->started) showSidebar(*state,suites);
+            else if(notifier==state->shutdown) {
+                state->sidebar.destroy(suites);
+                if(state->access) {checked(suites.get<SPAccessSuite>(kSPAccessSuite,kSPAccessSuiteVersion)->ReleasePlugin(state->access));state->access=nullptr;}
+            }
+            return kNoErr;
+        }
         if(is(caller,kCallerAIMenu)&&is(selector,kSelectorAIGoMenuItem)) {
+            MutationScope operation(*state);
             auto item=static_cast<AIMenuMessage*>(message)->menuItem;
-            if(item==state->about) MessageBoxW(nullptr,L"AI 画布表格工具 · 开发版\n单击选格，Shift 多选，拖动边线，双击编辑文字。\n通过“对象 → 画布表格”调整结构。",L"AI 画布表格工具",MB_OK|MB_ICONINFORMATION);
+            if(item==state->showSidebar) {showSidebar(*state,suites);updateSidebar(*state,suites);return kNoErr;}
+            if(item==state->about) MessageBoxW(nullptr,L"AI 画布表格工具 · 开发版\n单击选格，Shift 多选，拖动边线，双击编辑文字。\n通过“窗口 → 画布表格”打开侧边栏。",L"AI 画布表格工具",MB_OK|MB_ICONINFORMATION);
             else if(item==state->create||item==state->edit) {
                 AIDocumentHandle document=nullptr; checked(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)->GetDocument(&document));
                 if(!document) {MessageBoxW(nullptr,L"请先新建或打开 Illustrator 文档。",L"画布表格",MB_OK);return kNoErr;}
@@ -206,7 +261,9 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
                 if(!state->active || *state->active>=state->tables.size() || !state->interaction.selection()) {
                     MessageBoxW(nullptr,L"请先使用表格工具选择单元格。按住 Shift 可选择矩形区域。",L"选择表格区域",MB_OK);return kNoErr;
                 }
+                traceStage("command.synchronize.start");
                 DocumentAdapter adapter(suites);auto& table=state->tables[*state->active];adapter.synchronize(table);
+                traceStage("command.synchronize.done");
                 auto selection=*state->interaction.selection();auto model=table.model;
                 const auto index=static_cast<int>(command-state->commands.begin());
                 if(index==9) {
@@ -214,17 +271,22 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
                     auto fonts=adapter.installedFonts();auto style=showCellStyleDialog(initial,fonts);if(!style) return kNoErr;
                     checked(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)->LoseTextFocus());
                     checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
-                    adapter.applyStyle(table,selection,*style);invalidate(suites);return kNoErr;
+                    adapter.applyStyle(table,selection,*style);invalidate(suites);updateSidebar(*state,suites);return kNoErr;
                 }
                 if(index<8) model=table::applyCommand(model,selection,static_cast<table::Command>(index));
+                traceStage("command.model.done");
                 checked(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)->LoseTextFocus());
+                traceStage("command.textFocus.released");
                 checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
+                traceStage("command.tool.selected");
                 if(index==8) {adapter.detach(table);state->active.reset();}
                 else adapter.applyStructure(table,model);
+                traceStage("command.artwork.done");
                 state->interaction.clearSelection();invalidate(suites);
             }
-        } else if(is(caller,kCallerAITool)) toolEvent(*state,suites,selector,static_cast<AIToolMessage*>(message));
+        } else if(is(caller,kCallerAITool)) {MutationScope operation(*state);toolEvent(*state,suites,selector,static_cast<AIToolMessage*>(message));}
         else if(is(caller,kCallerAIAnnotation)&&is(selector,kSelectorAIDrawAnnotation)) draw(*state,suites,static_cast<AIAnnotatorMessage*>(message));
+        if(!is(caller,kCallerAIAnnotation)) updateSidebar(*state,suites);
         return kNoErr;
     } catch(const table::ValidationError&) {
         if(is(caller,kCallerAIMenu)) MessageBoxW(nullptr,L"无法执行此操作。请检查选区是否完整、是否会删除整张表，以及表格是否旋转、锁定或缺少对象。",L"检查表格和选区",MB_OK|MB_ICONINFORMATION);
