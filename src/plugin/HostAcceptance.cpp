@@ -2,11 +2,14 @@
 #include "HostAcceptance.hpp"
 #include "DocumentAdapter.hpp"
 #include "AIDocumentList.h"
+#include "AIFilePath.h"
+#include "AIFileFormat.h"
 #include "table/Commands.hpp"
 #include "Trace.hpp"
 #include <cmath>
 #include <algorithm>
 #include <stdexcept>
+extern "C" {AIFilePathSuite* sAIFilePath=nullptr;}
 
 namespace {
 template<class S,class R> struct Lease {
@@ -31,6 +34,8 @@ void runHostAcceptance(Suites& suites,bool interactive,AIDocumentHandle* created
     auto text=suites.get<AITextFrameSuite>(kAITextFrameSuite,kAITextFrameVersion);
     auto ranges=suites.get<ATE::TextRangeSuite>(kTextRangeSuite,kTextRangeSuiteVersion);
     auto chars=suites.get<ATE::CharFeaturesSuite>(kCharFeaturesSuite,kCharFeaturesSuiteVersion);
+    auto art=suites.get<AIArtSuite>(kAIArtSuite,kAIArtVersion);
+    auto document=suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion);
     DocumentAdapter adapter(suites);
     auto model=table::TableModel::create(2,2,table::mm(120),table::mm(60));
     const auto first=model.cellAt(0,0).id;
@@ -62,11 +67,62 @@ void runHostAcceptance(Suites& suites,bool interactive,AIDocumentHandle* created
     require(native.model.cellById(first).text==u"AAA BBB\n中文 12","Merge changed cell content");
     require(std::abs(fontSize(first,0)-24)<0.01&&std::abs(fontSize(first,4)-12)<0.01,"Merge destroyed mixed character formatting");
     traceStage("acceptance.merge.mixedFont.passed");
+    struct FilePathScope {
+        AIFilePathSuite* previous=sAIFilePath;
+        ~FilePathScope(){sAIFilePath=previous;}
+    } filePathScope;
+    sAIFilePath=suites.get<AIFilePathSuite>(kAIFilePathSuite,kAIFilePathVersion);
+    wchar_t temporary[MAX_PATH]{};require(GetTempPathW(MAX_PATH,temporary)>0,"Cannot locate test artifact directory");
+    const auto savedPath=std::wstring(temporary)+L"IllustratorTableTool-Acceptance-"+std::to_wstring(GetTickCount64())+L".ai";
+    ai::FilePath saved(ai::UnicodeString(reinterpret_cast<const ASUnicode*>(savedPath.c_str())));
+    AIFileFormatHandle format=nullptr;checked(document->GetDocumentFileFormat(&format));const char* writer=nullptr;
+    checked(suites.get<AIFileFormatSuite>(kAIFileFormatSuite,kAIFileFormatVersion)->GetFileFormatName(format,&writer));
+    traceStage("acceptance.save.start");
+    checked(document->WriteDocumentWithOptions(saved,writer,kFileFormatWrite|kFileFormatSuppressUI,nullptr,false,nullptr));
+    traceStage("acceptance.save.passed");
+    AIArtHandle copied=nullptr;checked(art->DuplicateArt(native.group,kPlaceAboveAll,nullptr,&copied));
+    auto foundTables=adapter.discoverTables();require(foundTables.size()==2,"Copied table was not discovered independently");
+    auto copiedTable=std::find_if(foundTables.begin(),foundTables.end(),[&](const NativeTable& value){return value.group==copied;});
+    require(copiedTable!=foundTables.end(),"Copied group has no independent native references");
+    adapter.applyStructure(*copiedTable,table::applyCommand(copiedTable->model,{0,0,0,1},table::Command::Split));
+    adapter.synchronize(native);require(native.model.cells().size()==3,"Editing copy changed original table");
+    auto staleCopy=*copiedTable;checked(art->DisposeArt(copied));bool refused=false;
+    try{adapter.synchronize(staleCopy);}catch(...){refused=true;}
+    require(refused,"Deleted native table was not refused");traceStage("acceptance.copy.deletedGuard.passed");
+    table::CellStyle mergedStyle;mergedStyle.fontSize=20;mergedStyle.fill={0.15,0.4,0.8};mergedStyle.alignment=1;
+    adapter.applyStyle(native,{0,0,0,1},mergedStyle);
     adapter.applyStructure(native,table::applyCommand(native.model,{0,0,0,1},table::Command::Split));
     adapter.synchronize(native);
     require(native.model.cells().size()==4&&native.model.cellAt(0,1).text==u"中文 12","Split did not restore original cells");
     require(std::abs(fontSize(first,0)-24)<0.01&&std::abs(fontSize(first,4)-12)<0.01,"Split destroyed mixed character formatting");
+    AIPathStyle restoredPaint;restoredPaint.Init();AIBoolean advanced=false;
+    auto firstNative=std::find_if(native.cells.begin(),native.cells.end(),[&](const NativeCell& cell){return cell.id==first;});
+    checked(suites.get<AIPathStyleSuite>(kAIPathStyleSuite,kAIPathStyleVersion)->GetPathStyle(firstNative->fill,&restoredPaint,&advanced));
+    const auto& ink=restoredPaint.fill.color;
+    const bool white=ink.kind==kThreeColor ? ink.c.rgb.red>0.99&&ink.c.rgb.green>0.99&&ink.c.rgb.blue>0.99 :
+        ink.kind==kFourColor&&ink.c.f.cyan<0.01&&ink.c.f.magenta<0.01&&ink.c.f.yellow<0.01&&ink.c.f.black<0.01;
+    require(white&&native.model.cellById(first).style.fontSize==12,"Split native appearance differs from restored model style");
     traceStage("acceptance.split.mixedFont.passed");
+    for(const auto command:{table::Command::InsertRowBelow,table::Command::InsertColumnRight,table::Command::DeleteRows,table::Command::DeleteColumns}) {
+        adapter.applyStructure(native,table::applyCommand(native.model,{1,1,1,1},command));
+        adapter.synchronize(native);
+        require(native.model.cellById(first).text==u"AAA BBB","Row or column operation changed surviving content");
+        require(std::abs(fontSize(first,0)-24)<0.01&&std::abs(fontSize(first,4)-12)<0.01,"Row or column operation changed surviving formatting");
+    }
+    require(native.model.rows()==2&&native.model.columns()==2,"Row and column round trip changed dimensions");
+    traceStage("acceptance.tracks.passed");
+    auto staleDocument=native;checked(document->SetDocumentModified(false));checked(documents->Close(created));
+    if(createdDocument) *createdDocument=nullptr;
+    refused=false;try{adapter.synchronize(staleDocument);}catch(...){refused=true;}
+    require(refused,"Closed native document was not refused");traceStage("acceptance.closedDocumentGuard.passed");
+    checked(documents->OpenNoHistory(saved,kAIUnknownColorModel,kDialogOff,false,&created));
+    if(createdDocument) *createdDocument=created;
+    foundTables=adapter.discoverTables();require(foundTables.size()==1,"Saved table metadata did not reopen");native=foundTables.front();
+    require(native.model.cells().size()==3,"Saved merged structure was not restored");
+    adapter.applyStructure(native,table::applyCommand(native.model,{0,0,0,1},table::Command::Split));adapter.synchronize(native);
+    require(native.model.cellAt(0,1).text==u"中文 12"&&std::abs(fontSize(first,0)-24)<0.01&&std::abs(fontSize(first,4)-12)<0.01,
+        "Saved merged table did not preserve original text and formatting");
+    traceStage("acceptance.reopen.split.passed");
     traceStage("acceptance.all.passed");
     if(interactive) MessageBoxW(nullptr,L"本轮原生合并、拆分和混合字号验收通过。\n测试结果保留在新建文档中。",L"开发验收",MB_OK|MB_ICONINFORMATION);
 }
@@ -82,6 +138,7 @@ bool runAutoHostAcceptance(Suites& suites) {
     try {runHostAcceptance(suites,false,&own);}
     catch(const std::exception& error) {traceStage("acceptance.auto.failed");traceStage(error.what());}
     catch(ASErr error) {traceStage("acceptance.auto.SDK.failed");traceStage(std::to_string(error).c_str());}
+    catch(...) {traceStage("acceptance.auto.unexpected.failed");}
     if(own) {
         // Only the document returned by this test is eligible for cleanup.
         checked(documents->Activate(own,true));
