@@ -6,6 +6,8 @@
 #include "Trace.hpp"
 #ifdef TABLE_HOST_ACCEPTANCE
 #include "HostAcceptance.hpp"
+#include "AITimer.h"
+#include "AIApplication.h"
 #endif
 #include "SPInterf.h"
 #include "AIPlugin.h"
@@ -36,6 +38,7 @@ struct State {
     AIMenuItemHandle showSidebar=nullptr;
 #ifdef TABLE_HOST_ACCEPTANCE
     AIMenuItemHandle acceptance=nullptr;
+    AITimerHandle acceptanceTimer=nullptr;
 #endif
     std::array<AIMenuItemHandle,10> commands{};
     AIToolHandle tool=nullptr;
@@ -98,6 +101,9 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
     add("IllustratorTableTool.Edit","选择和调整单元格",&state.edit);
 #ifdef TABLE_HOST_ACCEPTANCE
     add("IllustratorTableTool.Acceptance","运行开发验收（新测试文档）",&state.acceptance);
+    auto timers=suites.get<AITimerSuite>(kAITimerSuite,kAITimerVersion);
+    checked(timers->AddTimer(data->self,"IllustratorTableTool.AcceptanceTimer",5*kTicksPerSecond,&state.acceptanceTimer));
+    checked(timers->SetTimerActive(state.acceptanceTimer,false));
 #endif
     const char* names[]={"合并单元格","拆分单元格","在上方插入行","在下方插入行","在左侧插入列","在右侧插入列","删除所选行","删除所选列","转换为普通对象","单元格样式…"};
     for(std::size_t i=0;i<state.commands.size();++i) {
@@ -256,9 +262,23 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
             return kNoErr;
         }
         auto* state=static_cast<State*>(data->globals); if(!state) return kNoErr;
+#ifdef TABLE_HOST_ACCEPTANCE
+        if(is(caller,kCallerAITimer)&&is(selector,kSelectorAIGoTimer)&&static_cast<AITimerMessage*>(message)->timer==state->acceptanceTimer) {
+            checked(suites.get<AITimerSuite>(kAITimerSuite,kAITimerVersion)->SetTimerActive(state->acceptanceTimer,false));
+            bool quit=false;
+            {MutationScope operation(*state);quit=runAutoHostAcceptance(suites);}
+            if(quit) return suites.get<AIApplicationSuite>(kAIApplicationSuite,kAIApplicationVersion)->Quit();
+            return kNoErr;
+        }
+#endif
         if(is(caller,kCallerAINotify)&&is(selector,kSelectorAINotify)) {
             auto notifier=static_cast<AINotifierMessage*>(message)->notifier;
-            if(notifier==state->started) showSidebar(*state,suites);
+            if(notifier==state->started) {
+                showSidebar(*state,suites);
+#ifdef TABLE_HOST_ACCEPTANCE
+                if(hasAutoHostAcceptanceRequest()) checked(suites.get<AITimerSuite>(kAITimerSuite,kAITimerVersion)->SetTimerActive(state->acceptanceTimer,true));
+#endif
+            }
             else if((notifier==state->documentSwitch||notifier==state->documentClose)&&!state->mutating) {
                 state->interaction.cancel();state->interaction.clearSelection();state->active.reset();
                 state->tables.clear();state->placing=false;state->pending.reset();state->lastCell=0;
@@ -274,6 +294,9 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
                 }
             }
             else if(notifier==state->shutdown) {
+#ifdef TABLE_HOST_ACCEPTANCE
+                checked(suites.get<AITimerSuite>(kAITimerSuite,kAITimerVersion)->SetTimerActive(state->acceptanceTimer,false));
+#endif
                 state->sidebar.destroy(suites);
                 if(state->access) {checked(suites.get<SPAccessSuite>(kSPAccessSuite,kSPAccessSuiteVersion)->ReleasePlugin(state->access));state->access=nullptr;}
             }

@@ -14,14 +14,20 @@ template<class S,class R> struct Lease {
     ~Lease(){if(value) suite->Release(value);}
 };
 void require(bool condition,const char* message) {if(!condition) throw std::runtime_error(message);}
+std::wstring requestPath() {
+    wchar_t directory[MAX_PATH]{};const auto length=GetTempPathW(MAX_PATH,directory);
+    if(!length||length>=MAX_PATH) return {};
+    return std::wstring(directory)+L"IllustratorTableTool.run-acceptance";
 }
-void runHostAcceptance(Suites& suites) {
+}
+void runHostAcceptance(Suites& suites,bool interactive,AIDocumentHandle* createdDocument) {
     traceStage("acceptance.begin");
     auto documents=suites.get<AIDocumentListSuite>(kAIDocumentListSuite,kAIDocumentListVersion);
     AIDocumentHandle created=nullptr;ai::UnicodeString preset;
     // Every run creates its own document; it never edits or closes existing user documents.
     checked(documents->New(preset,nullptr,kDialogOff,&created));
     require(created!=nullptr,"Test document was not created");
+    if(createdDocument) *createdDocument=created;
     auto text=suites.get<AITextFrameSuite>(kAITextFrameSuite,kAITextFrameVersion);
     auto ranges=suites.get<ATE::TextRangeSuite>(kTextRangeSuite,kTextRangeSuiteVersion);
     auto chars=suites.get<ATE::CharFeaturesSuite>(kCharFeaturesSuite,kCharFeaturesSuiteVersion);
@@ -61,5 +67,26 @@ void runHostAcceptance(Suites& suites) {
     require(native.model.cells().size()==4&&native.model.cellAt(0,1).text==u"中文 12","Split did not restore original cells");
     require(std::abs(fontSize(first,0)-24)<0.01&&std::abs(fontSize(first,4)-12)<0.01,"Split destroyed mixed character formatting");
     traceStage("acceptance.split.mixedFont.passed");
-    MessageBoxW(nullptr,L"本轮原生合并、拆分和混合字号验收通过。\n测试结果保留在新建文档中。",L"开发验收",MB_OK|MB_ICONINFORMATION);
+    traceStage("acceptance.all.passed");
+    if(interactive) MessageBoxW(nullptr,L"本轮原生合并、拆分和混合字号验收通过。\n测试结果保留在新建文档中。",L"开发验收",MB_OK|MB_ICONINFORMATION);
+}
+bool hasAutoHostAcceptanceRequest() {
+    const auto path=requestPath();return !path.empty()&&GetFileAttributesW(path.c_str())!=INVALID_FILE_ATTRIBUTES;
+}
+bool runAutoHostAcceptance(Suites& suites) {
+    const auto path=requestPath();if(path.empty()||!DeleteFileW(path.c_str())) return false;
+    auto documents=suites.get<AIDocumentListSuite>(kAIDocumentListSuite,kAIDocumentListVersion);
+    ai::int32 count=0;checked(documents->Count(&count));
+    if(count!=0) {traceStage("acceptance.auto.refused.existingDocuments");return false;}
+    AIDocumentHandle own=nullptr;
+    try {runHostAcceptance(suites,false,&own);}
+    catch(const std::exception& error) {traceStage("acceptance.auto.failed");traceStage(error.what());}
+    catch(ASErr error) {traceStage("acceptance.auto.SDK.failed");traceStage(std::to_string(error).c_str());}
+    if(own) {
+        // Only the document returned by this test is eligible for cleanup.
+        checked(documents->Activate(own,true));
+        checked(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)->SetDocumentModified(false));
+        checked(documents->Close(own));
+    }
+    checked(documents->Count(&count));traceStage("acceptance.auto.finished");return count==0;
 }
