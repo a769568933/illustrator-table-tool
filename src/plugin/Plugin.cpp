@@ -158,6 +158,18 @@ void draw(State& state,Suites& suites,AIAnnotatorMessage* message) {
         auto a=point({first.left,first.top}),b=point({last.right,last.bottom});
         AIRect rect{a.h,a.v,b.h,b.v}; checked(drawer->DrawRect(message->drawer,rect,false));
     }
+    if(!state.interaction.dragging()) {
+        AIRGBColor red;red.red=65535;red.green=9000;red.blue=9000;drawer->SetColor(message->drawer,red);
+        for(const auto& cell:table.cells) if(adapter.overflows(cell)) {
+            auto bounds=table::Geometry::cellBounds(table.model,cell.id);auto p=point({bounds.right,bounds.bottom});
+            AIRect marker{static_cast<short>(p.h-7),static_cast<short>(p.v-7),p.h,p.v};
+            checked(drawer->DrawRect(message->drawer,marker,false));
+            AIPoint a{static_cast<short>(p.h-6),static_cast<short>(p.v-4)},b{static_cast<short>(p.h-1),static_cast<short>(p.v-4)};
+            checked(drawer->DrawLine(message->drawer,a,b));
+            a={static_cast<short>(p.h-4),static_cast<short>(p.v-6)};b={static_cast<short>(p.h-4),static_cast<short>(p.v-1)};
+            checked(drawer->DrawLine(message->drawer,a,b));
+        }
+    }
 }
 }
 extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {

@@ -43,6 +43,7 @@ class DocumentAdapter {
     ATE::FontSuite* ateFonts;
     ATE::ApplicationPaintSuite* paints;
     ATE::ParaFeaturesSuite* paragraphs;
+    ATE::TextFrameSuite* frames;
     AIRealPoint world(const NativeTable& table, table::Point point) const;
     void rectangle(AIArtHandle path,const NativeTable& table,table::Rect bounds);
     void line(AIArtHandle path,const NativeTable& table,const table::Edge& edge);
@@ -64,6 +65,7 @@ public:
     bool valid(const NativeTable& table) const;
     void applyGeometry(NativeTable& table,const table::TableModel& model);
     void beginEdit(const NativeTable& table,table::CellId id);
+    bool overflows(const NativeCell& cell);
     std::vector<NativeTable> discoverTables();
     void synchronize(NativeTable& table);
     void applyStructure(NativeTable& table,const table::TableModel& model);

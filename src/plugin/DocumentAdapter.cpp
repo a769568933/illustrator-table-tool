@@ -45,7 +45,8 @@ DocumentAdapter::DocumentAdapter(Suites& suites) :
  conversion(suites.get<AIColorConversionSuite>(kAIColorConversionSuite,kAIColorConversionVersion)),
  ateFonts(suites.get<ATE::FontSuite>(kFontSuite,kFontSuiteVersion)),
  paints(suites.get<ATE::ApplicationPaintSuite>(kApplicationPaintSuite,kApplicationPaintSuiteVersion)),
- paragraphs(suites.get<ATE::ParaFeaturesSuite>(kParaFeaturesSuite,kParaFeaturesSuiteVersion)) {}
+ paragraphs(suites.get<ATE::ParaFeaturesSuite>(kParaFeaturesSuite,kParaFeaturesSuiteVersion)),
+ frames(suites.get<ATE::TextFrameSuite>(kTextFrameSuite,kTextFrameSuiteVersion)) {}
 AIRealPoint DocumentAdapter::world(const NativeTable& table,table::Point point) const {
     return {static_cast<AIReal>(table.origin.h+point.x),static_cast<AIReal>(table.origin.v-point.y)};
 }
@@ -197,8 +198,8 @@ NativeTable DocumentAdapter::readTable(AIArtHandle group) {
     if(!valid(table)) throw table::ValidationError("Table is locked, hidden or incomplete");
     ai::int16 count=0;checked(paths->GetPathSegmentCount(table.frame,&count));if(count!=4) throw table::ValidationError("Invalid table frame");
     AIPathSegment corners[4]{};checked(paths->GetPathSegments(table.frame,0,4,corners));
-    auto near=[](AIReal a,AIReal b){return std::abs(a-b)<0.001;};
-    if(!near(corners[0].p.v,corners[1].p.v)||!near(corners[2].p.v,corners[3].p.v)||!near(corners[0].p.h,corners[3].p.h)||!near(corners[1].p.h,corners[2].p.h))
+    auto sameCoordinate=[](AIReal a,AIReal b){return std::abs(a-b)<0.001;};
+    if(!sameCoordinate(corners[0].p.v,corners[1].p.v)||!sameCoordinate(corners[2].p.v,corners[3].p.v)||!sameCoordinate(corners[0].p.h,corners[3].p.h)||!sameCoordinate(corners[1].p.h,corners[2].p.h))
         throw table::ValidationError("Rotated or sheared table: restore its original direction before editing");
     const double width=corners[1].p.h-corners[0].p.h,height=corners[0].p.v-corners[3].p.v;
     table.model.scale(width/table.model.width(),height/table.model.height());table.origin=corners[0].p;
@@ -305,6 +306,13 @@ AIColor DocumentAdapter::color(const table::Color& value) {
         }
     }
     return result;
+}
+bool DocumentAdapter::overflows(const NativeCell& cell) {
+    AteLease<ATE::TextFrameSuite,ATE::TextFrameRef> frame{frames};checked(text->GetATETextFrame(cell.text,&frame.value));
+    RangeLease visible{ranges},complete{ranges};
+    checked(frames->GetTextRange(frame.value,false,&visible.value));checked(frames->GetTextRange(frame.value,true,&complete.value));
+    ATETextDOM::Int32 visibleSize=0,completeSize=0;checked(ranges->GetSize(visible.value,&visibleSize));checked(ranges->GetSize(complete.value,&completeSize));
+    return completeSize>visibleSize;
 }
 std::vector<FontChoice> DocumentAdapter::installedFonts() {
     ai::int32 count=0;checked(fonts->CountFonts(&count));std::vector<FontChoice> result;
