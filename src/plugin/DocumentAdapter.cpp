@@ -216,7 +216,8 @@ NativeTable DocumentAdapter::readTable(AIArtHandle group) {
     }
     return table;
 }
-std::vector<NativeTable> DocumentAdapter::discoverTables() {
+std::vector<NativeTable> DocumentAdapter::discoverTables(std::vector<RejectedTable>* rejected) {
+    if(rejected) rejected->clear();
     std::vector<NativeTable> result;AIDocumentHandle current=nullptr;
     if(document->GetDocument(&current)||!current) return result;
     AILayerHandle layer=nullptr;checked(layers->GetFirstLayer(&layer));std::vector<AIArtHandle> stack;
@@ -229,14 +230,26 @@ std::vector<NativeTable> DocumentAdapter::discoverTables() {
         auto item=stack.back();stack.pop_back();if(++visited>100000) throw table::ValidationError("Document artwork limit exceeded");
         short type=0;checked(art->GetArtType(item,&type));if(type!=kGroupArt) continue;
         bool tableGroup=false;
+        auto reject=[&](const std::wstring& reason) {
+            if(!rejected) return;
+            AIRealRect bounds{};
+            if(art->GetArtBounds(item,&bounds)==kNoErr) rejected->push_back({bounds,reason});
+        };
         if(art->HasDictionary(item)) {
-            DictionaryLease dict{dictionaries};checked(art->GetDictionary(item,&dict.value));
-            tableGroup=dictionaries->IsKnown(dict.value,dictionaries->Key(modelKey));
+            try {
+                DictionaryLease dict{dictionaries};checked(art->GetDictionary(item,&dict.value));
+                tableGroup=dictionaries->IsKnown(dict.value,dictionaries->Key(modelKey));
+                if(tableGroup) result.push_back(readTable(item));
+            } catch(const table::ValidationError& error) {
+                const bool transformed=std::string(error.what()).find("Rotated or sheared")!=std::string::npos;
+                reject(transformed?L"此表格已旋转或倾斜，请恢复原方向后再编辑。":L"此表格的数据或对象不完整，或已锁定、隐藏。请恢复对象后重试。");
+            } catch(ASErr) {
+                // A wrong dictionary entry type is an SDK error, not a model validation error.
+                // Isolate it to this group so other tables remain available.
+                reject(L"此表格的数据类型异常，暂时无法编辑。请使用未损坏的副本。");
+            }
         }
-        if(tableGroup) {
-            try {result.push_back(readTable(item));} catch(const table::ValidationError&) {} // Never modify a damaged group.
-            continue;
-        }
+        if(tableGroup) continue;
         AIArtHandle child=nullptr;checked(art->GetArtFirstChild(item,&child));
         while(child) {stack.push_back(child);AIArtHandle next=nullptr;checked(art->GetArtSibling(child,&next));child=next;}
     }

@@ -135,14 +135,25 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
             invalidate(suites); return;
         }
         auto oldGroup=state.active&&*state.active<state.tables.size() ? state.tables[*state.active].group : nullptr;
-        state.tables=adapter.discoverTables();
+        std::vector<RejectedTable> rejected;
+        state.tables=adapter.discoverTables(&rejected);
         state.active.reset();
         for(std::size_t i=state.tables.size();i>0;--i) {
             const auto& table=state.tables[i-1];
             if(!adapter.valid(table)) continue;
             if(table::Geometry::hitTest(table.model,local(table,message->cursor),zoom,3).kind!=table::HitKind::Outside) { state.active=i-1; break; }
         }
-        if(!state.active) { state.interaction.cancel(); state.interaction.clearSelection(); invalidate(suites); return; }
+        if(!state.active) {
+            state.interaction.cancel();state.interaction.clearSelection();invalidate(suites);
+            for(const auto& item:rejected) {
+                if(message->cursor.h>=item.bounds.left&&message->cursor.h<=item.bounds.right&&
+                   message->cursor.v>=item.bounds.bottom&&message->cursor.v<=item.bounds.top) {
+                    state.sidebar.update(false,item.reason);
+                    MessageBoxW(nullptr,item.reason.c_str(),L"画布表格",MB_OK|MB_ICONINFORMATION);break;
+                }
+            }
+            return;
+        }
         auto& table=state.tables[*state.active];
         if(oldGroup!=table.group) {state.interaction.clearSelection();state.lastCell=0;}
         auto point=local(table,message->cursor);

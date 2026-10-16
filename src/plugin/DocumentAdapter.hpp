@@ -16,6 +16,7 @@
 #include "table/Geometry.hpp"
 
 struct NativeCell { table::CellId id; AIArtHandle fill; AIArtHandle text; };
+struct RejectedTable { AIRealRect bounds; std::wstring reason; };
 struct NativeTable {
     table::TableModel model;
     AIDocumentHandle document = nullptr;
@@ -66,7 +67,7 @@ public:
     void applyGeometry(NativeTable& table,const table::TableModel& model);
     void beginEdit(const NativeTable& table,table::CellId id);
     bool overflows(const NativeCell& cell);
-    std::vector<NativeTable> discoverTables();
+    std::vector<NativeTable> discoverTables(std::vector<RejectedTable>* rejected=nullptr);
     void synchronize(NativeTable& table);
     void applyStructure(NativeTable& table,const table::TableModel& model);
     std::vector<FontChoice> installedFonts();
