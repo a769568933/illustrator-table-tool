@@ -242,7 +242,10 @@ std::vector<NativeTable> DocumentAdapter::discoverTables() {
     }
     return result;
 }
-void DocumentAdapter::synchronize(NativeTable& table) {table=readTable(table.group);}
+void DocumentAdapter::synchronize(NativeTable& table) {
+    if(!valid(table)) throw table::ValidationError("Table belongs to a closed document or contains invalid artwork");
+    table=readTable(table.group);
+}
 void DocumentAdapter::applyStructure(NativeTable& table,const table::TableModel& model) {
     traceStage("structure.begin");
     if(!valid(table)) throw static_cast<ASErr>(kBadParameterErr);

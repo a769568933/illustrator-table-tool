@@ -47,6 +47,7 @@ struct State {
     SPPluginRef plugin=nullptr;
     SPAccessRef access=nullptr;
     AINotifierHandle started=nullptr,shutdown=nullptr;
+    AINotifierHandle documentSwitch=nullptr,documentClose=nullptr,artChanged=nullptr;
     bool mutating=false;
 };
 struct MutationScope {
@@ -98,6 +99,9 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
     auto notifiers=suites.get<AINotifierSuite>(kAINotifierSuite,kAINotifierVersion);
     checked(notifiers->AddNotifier(data->self,"IllustratorTableTool.Started",kAIApplicationStartedNotifier,&state.started));
     checked(notifiers->AddNotifier(data->self,"IllustratorTableTool.Shutdown",kAIApplicationShutdownNotifier,&state.shutdown));
+    checked(notifiers->AddNotifier(data->self,"IllustratorTableTool.DocumentSwitch",kAIActiveDocumentWindowAboutToBeChangedNotifier,&state.documentSwitch));
+    checked(notifiers->AddNotifier(data->self,"IllustratorTableTool.DocumentClose",kAIDocumentAboutToCloseNotifier,&state.documentClose));
+    checked(notifiers->AddNotifier(data->self,"IllustratorTableTool.ArtChanged",kAIArtObjectsChangedNotifier,&state.artChanged));
     checked(suites.get<SPAccessSuite>(kSPAccessSuite,kSPAccessSuiteVersion)->AcquirePlugin(data->self,&state.access));
     AIAddToolData tool;
     tool.title=ai::UnicodeString::FromUTF8("画布表格工具");
@@ -235,6 +239,20 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
         if(is(caller,kCallerAINotify)&&is(selector,kSelectorAINotify)) {
             auto notifier=static_cast<AINotifierMessage*>(message)->notifier;
             if(notifier==state->started) showSidebar(*state,suites);
+            else if(notifier==state->documentSwitch||notifier==state->documentClose) {
+                state->interaction.cancel();state->interaction.clearSelection();state->active.reset();
+                state->tables.clear();state->placing=false;state->pending.reset();state->lastCell=0;
+                state->sidebar.update(false,L"文档已切换或关闭，请重新选择表格。");
+            } else if(notifier==state->artChanged&&!state->mutating) {
+                // Keep valid cached tables through native text edits; clear deleted/foreign handles.
+                if(state->active&&*state->active<state->tables.size()) {
+                    DocumentAdapter adapter(suites);
+                    if(!adapter.valid(state->tables[*state->active])) {
+                        state->interaction.cancel();state->interaction.clearSelection();state->active.reset();state->tables.clear();
+                        state->sidebar.update(false,L"所选表格已删除或不可编辑，请重新选择。");
+                    }
+                }
+            }
             else if(notifier==state->shutdown) {
                 state->sidebar.destroy(suites);
                 if(state->access) {checked(suites.get<SPAccessSuite>(kSPAccessSuite,kSPAccessSuiteVersion)->ReleasePlugin(state->access));state->access=nullptr;}
