@@ -1,5 +1,6 @@
 #include <windows.h>
 #include "SPBasic.h"
+#include "SPBlocks.h"
 #include "SPInterf.h"
 #include "AIPlugin.h"
 #include "AIMenu.h"
@@ -10,7 +11,10 @@
 #include <exception>
 #include <vector>
 
-extern "C" { AIUnicodeStringSuite* sAIUnicodeString = nullptr; }
+extern "C" {
+AIUnicodeStringSuite* sAIUnicodeString = nullptr;
+SPBlocksSuite* sSPBlocks = nullptr;
+}
 
 namespace {
 struct State { AIMenuItemHandle about = nullptr; };
@@ -25,6 +29,7 @@ public:
         for (auto it = acquired.rbegin(); it != acquired.rend(); ++it)
             basic->ReleaseSuite(it->name, it->version);
         sAIUnicodeString = nullptr;
+        sSPBlocks = nullptr;
     }
     template<class T> T* get(const char* name, ai::int32 version) {
         const void* result = nullptr;
@@ -44,6 +49,7 @@ extern "C" ASAPI ASErr PluginMain(char* caller, char* selector, void* message) {
     if (!data->basic) return kBadParameterErr;
     try {
         Suites suites(data->basic);
+        sSPBlocks = suites.get<SPBlocksSuite>(kSPBlocksSuite, kSPBlocksSuiteVersion);
         sAIUnicodeString = suites.get<AIUnicodeStringSuite>(kAIUnicodeStringSuite, kAIUnicodeStringVersion);
         if (std::strcmp(caller, kSPInterfaceCaller) == 0) {
             if (std::strcmp(selector, kSPInterfaceStartupSelector) == 0) {
