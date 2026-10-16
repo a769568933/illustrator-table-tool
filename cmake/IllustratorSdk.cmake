@@ -1,0 +1,6 @@
+if(NOT EXISTS "${ILLUSTRATOR_SDK_ROOT}/illustratorapi/illustrator/AIPlugin.h")
+  message(FATAL_ERROR "Adobe Illustrator 2024 Windows C++ SDK is missing. Set ILLUSTRATOR_SDK_ROOT to its extracted root.")
+endif()
+if(NOT EXISTS "${ILLUSTRATOR_SDK_ROOT}/tools/pipl/pipl_gen/template_plugin.json")
+  message(FATAL_ERROR "SDK PiPL template is missing; use the complete official 2024 Windows SDK.")
+endif()

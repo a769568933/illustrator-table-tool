@@ -1,0 +1,46 @@
+name: Windows native plugin
+on:
+  push:
+    branches: [main, codex/native-table]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-tools-tests:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify PiPL resource encoder
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+  native:
+    needs: build-tools-tests
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/native-table')
+    runs-on: windows-2022
+    timeout-minutes: 25
+    permissions:
+      contents: write # GitHub requires push access to read an unpublished draft release.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch unpublished verified SDK build input
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/fetch_sdk.py
+      - name: Compile Illustrator 2024 x64 plugin with v142
+        shell: pwsh
+        run: ./scripts/build.ps1 -SdkRoot './.local/sdk/Adobe Illustrator 2024 SDK'
+      - name: Upload development loading probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: IllustratorTableTool-loading-probe-win64
+          path: build/native/plugin/Release/IllustratorTableTool.aip
+          if-no-files-found: error
+          retention-days: 14

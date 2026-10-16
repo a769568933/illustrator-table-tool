@@ -1,0 +1,12 @@
+.local/
+.superpowers/
+.worktrees/
+build/
+dist/
+AI_2024_SDK_Win.zip
+*.aip
+*.pdb
+*.obj
+*.lib
+*.exp
+__pycache__/
