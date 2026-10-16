@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace table {
 using CellId = std::uint64_t;
@@ -13,6 +14,7 @@ public: using std::runtime_error::runtime_error;
 struct Point { double x = 0; double y = 0; };
 struct Rect { double left; double top; double right; double bottom; };
 struct CellRange { int firstRow; int firstColumn; int lastRow; int lastColumn; };
+struct OriginalCell { CellId id; int row; int column; std::u16string text; };
 struct Cell {
     CellId id = 0;
     int row = 0;
@@ -20,6 +22,8 @@ struct Cell {
     int rowSpan = 1;
     int columnSpan = 1;
     std::u16string text;
+    std::vector<OriginalCell> originals = {};
+    std::u16string mergedText = {};
 };
 struct Edge {
     Point from;

@@ -43,12 +43,12 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
         item.itemText=ai::UnicodeString::FromUTF8(title);
         checked(menus->AddMenuItem(data->self,key,&item,0,handle));
     };
-    add("IllustratorTableTool.About","表格工具：关于…",&state.about);
-    add("IllustratorTableTool.Create","表格工具：新建 2×2 测试表格…",&state.create);
-    add("IllustratorTableTool.Edit","表格工具：选择和调整单元格",&state.edit);
+    add("IllustratorTableTool.About","���񹤾ߣ����ڡ�",&state.about);
+    add("IllustratorTableTool.Create","���񹤾ߣ��½� 2��2 ���Ա���",&state.create);
+    add("IllustratorTableTool.Edit","���񹤾ߣ�ѡ��͵�����Ԫ��",&state.edit);
     AIAddToolData tool;
-    tool.title=ai::UnicodeString::FromUTF8("画布表格工具");
-    tool.tooltip=ai::UnicodeString::FromUTF8("单击选格；Shift 多选；拖动边线；双击编辑文字");
+    tool.title=ai::UnicodeString::FromUTF8("�������񹤾�");
+    tool.tooltip=ai::UnicodeString::FromUTF8("����ѡ��Shift ��ѡ���϶����ߣ�˫���༭����");
     tool.sameGroupAs=kNoTool; tool.sameToolsetAs=kNoTool;
     tool.normalIconResID=tool.darkIconResID=16001; tool.iconType=ai::IconType::kSVG;
     checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->AddTool(data->self,"IllustratorTableTool.Tool",tool,kToolWantsToTrackCursorOption,&state.tool));
@@ -56,7 +56,7 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
     checked(annotations->AddAnnotator(data->self,"IllustratorTableTool.Selection",&state.annotator));
     checked(annotations->SetAnnotatorActive(state.annotator,true));
 }
-table::Point local(const NativeTable& t,AIRealPoint p){ return {p.x-t.origin.x,t.origin.y-p.y}; }
+table::Point local(const NativeTable& t,AIRealPoint p){ return {p.h-t.origin.h,t.origin.v-p.v}; }
 void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* message) {
     if(message->tool!=state.tool) return;
     auto annotations=suites.get<AIAnnotatorSuite>(kAIAnnotatorSuite,kAIAnnotatorVersion);
@@ -73,7 +73,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
     if(is(selector,kSelectorAIToolMouseDown)) {
         if(state.placing) {
             auto model=table::TableModel::create(2,2,table::mm(80),table::mm(32));
-            for(const auto& cell : model.cells()) model.setText(cell.id,u"双击编辑文字");
+            for(const auto& cell : model.cells()) model.setText(cell.id,u"˫���༭����");
             state.tables.push_back(adapter.createTable(model,message->cursor));
             state.active=state.tables.size()-1; state.interaction.clearSelection(); state.placing=false;
             invalidate(suites); return;
@@ -113,13 +113,13 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
         }
         invalidate(suites);
     } else if(is(selector,kSelectorAITrackToolCursor)) {
-        LPCWSTR cursor=state.placing ? IDC_CROSS : IDC_ARROW;
+        LPCTSTR cursor=state.placing ? IDC_CROSS : IDC_ARROW;
         if(state.active && *state.active<state.tables.size() && adapter.valid(state.tables[*state.active])) {
             const auto& table=state.tables[*state.active];
             auto hit=table::Geometry::hitTest(table.model,local(table,message->cursor),zoom,3);
             if(hit.edge && hit.edge->track>0) cursor=hit.edge->vertical ? IDC_SIZEWE : IDC_SIZENS;
         }
-        SetCursor(LoadCursorW(nullptr,cursor));
+        SetCursor(LoadCursor(nullptr,cursor));
     }
     (void)annotations;
 }
@@ -132,7 +132,7 @@ void draw(State& state,Suites& suites,AIAnnotatorMessage* message) {
     AIRGBColor blue; blue.red=9000; blue.green=32000; blue.blue=65535;
     drawer->SetColor(message->drawer,blue); drawer->SetLineWidth(message->drawer,1.5);
     auto point=[&](table::Point p) {
-        AIRealPoint artwork{static_cast<AIReal>(table.origin.x+p.x),static_cast<AIReal>(table.origin.y-p.y)};
+        AIRealPoint artwork{static_cast<AIReal>(table.origin.h+p.x),static_cast<AIReal>(table.origin.v-p.y)};
         AIPoint screen{}; checked(views->ArtworkPointToViewPoint(message->view,&artwork,&screen)); return screen;
     };
     if(state.interaction.preview()) {
@@ -164,10 +164,10 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
         auto* state=static_cast<State*>(data->globals); if(!state) return kNoErr;
         if(is(caller,kCallerAIMenu)&&is(selector,kSelectorAIGoMenuItem)) {
             auto item=static_cast<AIMenuMessage*>(message)->menuItem;
-            if(item==state->about) MessageBoxW(nullptr,L"AI 画布表格工具 · 交互验证版\n2×2 表格、选择、拖线和原生文字接入测试。\n保存重开、合并拆分及样式仍在开发。",L"AI 画布表格工具",MB_OK|MB_ICONINFORMATION);
+            if(item==state->about) MessageBoxW(nullptr,L"AI �������񹤾� �� ������֤��\n2��2 ����ѡ�����ߺ�ԭ�����ֽ�����ԡ�\n�����ؿ����ϲ���ּ���ʽ���ڿ�����",L"AI �������񹤾�",MB_OK|MB_ICONINFORMATION);
             else if(item==state->create||item==state->edit) {
                 AIDocumentHandle document=nullptr; checked(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)->GetDocument(&document));
-                if(!document) {MessageBoxW(nullptr,L"请先新建或打开 Illustrator 文档。",L"画布表格",MB_OK);return kNoErr;}
+                if(!document) {MessageBoxW(nullptr,L"�����½���� Illustrator �ĵ���",L"��������",MB_OK);return kNoErr;}
                 checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
                 state->placing=item==state->create;
             }

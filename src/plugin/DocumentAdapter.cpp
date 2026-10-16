@@ -23,7 +23,7 @@ DocumentAdapter::DocumentAdapter(Suites& suites) :
  ranges(suites.get<ATE::TextRangeSuite>(kTextRangeSuite,kTextRangeSuiteVersion)),
  features(suites.get<ATE::CharFeaturesSuite>(kCharFeaturesSuite,kCharFeaturesSuiteVersion)) {}
 AIRealPoint DocumentAdapter::world(const NativeTable& table,table::Point point) const {
-    return {static_cast<AIReal>(table.origin.x+point.x),static_cast<AIReal>(table.origin.y-point.y)};
+    return {static_cast<AIReal>(table.origin.h+point.x),static_cast<AIReal>(table.origin.v-point.y)};
 }
 void DocumentAdapter::rectangle(AIArtHandle path,const NativeTable& table,table::Rect b) {
     AIPathSegment segments[4]{};
@@ -55,7 +55,7 @@ NativeTable DocumentAdapter::createTable(const table::TableModel& model,AIRealPo
     if(!table.document) throw static_cast<ASErr>(kBadParameterErr);
     try {
         checked(art->NewArt(kGroupArt,kPlaceAboveAll,nullptr,&table.group));
-        checked(art->SetArtName(table.group,ai::UnicodeString::FromUTF8("画布表格（交互测试版）")));
+        checked(art->SetArtName(table.group,ai::UnicodeString::FromUTF8("�������񣨽������԰棩")));
         table.frame=newPath(table.group); setPaint(table.frame,false,false,0);
         rectangle(table.frame,table,{0,0,model.width(),model.height()});
         for(const auto& cell : model.cells()) {
@@ -77,7 +77,7 @@ NativeTable DocumentAdapter::createTable(const table::TableModel& model,AIRealPo
         for(const auto& edge : table::Geometry::visibleEdges(model)) {
             auto path=newPath(table.group); line(path,table,edge); setPaint(path,false,true,0); table.edges.push_back(path);
         }
-        auto label=ai::UnicodeString::FromUTF8("新建表格"); checked(undo->SetUndoTextUS(label,label));
+        auto label=ai::UnicodeString::FromUTF8("�½�����"); checked(undo->SetUndoTextUS(label,label));
         return table;
     } catch(...) { if(table.group) art->DisposeArt(table.group); throw; }
 }
@@ -106,7 +106,7 @@ void DocumentAdapter::applyGeometry(NativeTable& table,const table::TableModel& 
             AIArtHandle container=nullptr; checked(text->GetPathObject(cell.text,&container)); rectangle(container,table,textBounds(bounds));
         }
         for(std::size_t i=0;i<edges.size();++i) line(table.edges[i],table,edges[i]);
-        auto label=ai::UnicodeString::FromUTF8("调整表格尺寸"); checked(undo->SetUndoTextUS(label,label));
+        auto label=ai::UnicodeString::FromUTF8("��������ߴ�"); checked(undo->SetUndoTextUS(label,label));
         table.model=model;
     } catch(...) { undo->UndoChanges(); throw; }
 }

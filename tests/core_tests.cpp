@@ -31,8 +31,8 @@ void creation() {
     }
     expect(ids.size() == 16, "stable distinct identifiers");
     auto id = model.cellAt(2,1).id;
-    model.setText(id, u"中文\nMixed text");
-    expect(model.cellAt(2,1).text == u"中文\nMixed text", "UTF-16 cell content");
+    model.setText(id, u"����\nMixed text");
+    expect(model.cellAt(2,1).text == u"����\nMixed text", "UTF-16 cell content");
     expect(model.cellAt(2,1).id == id, "text edits retain identifiers");
     auto max = TableModel::create(100,20,mm(40),mm(200));
     expect(max.cells().size() == 2000, "2000 cells allowed");
@@ -100,8 +100,31 @@ void interaction() {
     rejects([&] { Geometry::hitTest(model,{10,10},0,3); });
     rejects([&] { Geometry::hitTest(model,{10,10},1,-1); });
 }
+void merging() {
+    using namespace table;
+    auto model=TableModel::create(3,3,90,90);
+    auto a=model.cellAt(0,0).id,b=model.cellAt(0,1).id,c=model.cellAt(1,0).id,d=model.cellAt(1,1).id;
+    model.setText(a,u"��"); model.setText(b,u"��"); model.setText(c,u"��"); model.setText(d,u"��");
+    model.merge({0,0,1,1});
+    expect(model.cellAt(1,1).id==a && model.cells().size()==6,"merge anchors and coverage");
+    expect(model.cellAt(0,0).text==u"��\n��\n��\n��","merge text in row-major order");
+    expect(Geometry::visibleEdges(model).size()==20,"merged internal edges hidden");
+    expect(Geometry::hitTest(model,{30,15},1,3).kind==HitKind::Cell,"hidden border cannot be dragged");
+    rejects([&] { model.merge({1,1,2,2}); });
+    expect(model.cells().size()==6 && model.cellAt(0,0).text==u"��\n��\n��\n��","partial merge failure preserves state");
+    model.split(a);
+    expect(model.cells().size()==9 && model.cellAt(0,1).id==b,"split restores stable IDs");
+    expect(model.cellAt(0,0).text==u"��" && model.cellAt(1,0).text==u"��","unchanged merge restores originals");
+    model.merge({0,0,1,1}); model.setText(a,u"������"); model.split(a);
+    expect(model.cellAt(0,0).text==u"������" && model.cellAt(0,1).text==u"��" && model.cellAt(1,1).text==u"��","edited merge retains new and original content");
+    model.merge({0,0,0,1}); model.merge({0,0,1,1}); model.split(a);
+    expect(model.cells().size()==9 && model.cellAt(0,1).text==u"��","nested merges flatten without text loss");
+    rejects([&] {model.merge({-1,0,1,1});});
+    model.merge({1,1,0,0});
+    expect(model.cellAt(1,1).id==a,"range direction normalized");
+}
 }
 int main() {
-    try { creation(); geometry(); interaction(); std::cout << checks << " checks passed\n"; return 0; }
+    try { creation(); geometry(); interaction(); merging(); std::cout << checks << " checks passed\n"; return 0; }
     catch (const std::exception& error) { std::cerr << "FAIL after " << checks << " checks: " << error.what() << '\n'; return 1; }
 }

@@ -48,4 +48,52 @@ void TableModel::resizeBoundary(bool vertical, int boundary, double delta) {
     sizes[boundary-1]+=delta;
     if (boundary<static_cast<int>(sizes.size())) sizes[boundary]-=delta;
 }
+void TableModel::merge(CellRange range) {
+    if(range.firstRow>range.lastRow) std::swap(range.firstRow,range.lastRow);
+    if(range.firstColumn>range.lastColumn) std::swap(range.firstColumn,range.lastColumn);
+    cellAt(range.firstRow,range.firstColumn); cellAt(range.lastRow,range.lastColumn);
+    std::vector<Cell> included;
+    for(const auto& cell : anchors) {
+        if(cell.row>range.lastRow || cell.column>range.lastColumn ||
+           cell.row+cell.rowSpan<=range.firstRow || cell.column+cell.columnSpan<=range.firstColumn) continue;
+        if(cell.row<range.firstRow || cell.column<range.firstColumn ||
+           cell.row+cell.rowSpan-1>range.lastRow || cell.column+cell.columnSpan-1>range.lastColumn)
+            throw ValidationError("Merge range cannot cut an existing merged cell");
+        included.push_back(cell);
+    }
+    if(included.size()<2) return;
+    std::sort(included.begin(),included.end(),[](const Cell& a,const Cell& b){return a.row==b.row ? a.column<b.column : a.row<b.row;});
+    Cell merged=included.front(); merged.text.clear(); merged.originals.clear();
+    merged.rowSpan=range.lastRow-range.firstRow+1; merged.columnSpan=range.lastColumn-range.firstColumn+1;
+    bool first=true;
+    for(const auto& cell : included) {
+        if(!first) merged.text+=u'\n'; merged.text+=cell.text; first=false;
+        if(cell.originals.empty()) merged.originals.push_back({cell.id,cell.row,cell.column,cell.text});
+        else {
+            auto saved=cell.originals;
+            if(cell.text!=cell.mergedText) for(auto& original : saved)
+                if(original.row==cell.row && original.column==cell.column) original.text=cell.text;
+            merged.originals.insert(merged.originals.end(),saved.begin(),saved.end());
+        }
+    }
+    merged.mergedText=merged.text;
+    auto next=*this;
+    next.anchors.erase(std::remove_if(next.anchors.begin(),next.anchors.end(),[&](const Cell& cell){
+        return cell.row>=range.firstRow&&cell.row<=range.lastRow&&cell.column>=range.firstColumn&&cell.column<=range.lastColumn;
+    }),next.anchors.end());
+    next.anchors.push_back(std::move(merged)); *this=std::move(next);
+}
+void TableModel::split(CellId id) {
+    const auto cell=cellById(id);
+    if(cell.rowSpan==1 && cell.columnSpan==1) return;
+    if(cell.originals.size()!=static_cast<std::size_t>(cell.rowSpan*cell.columnSpan)) throw ValidationError("Merged cell originals are incomplete");
+    auto next=*this;
+    next.anchors.erase(std::remove_if(next.anchors.begin(),next.anchors.end(),[=](const Cell& c){return c.id==id;}),next.anchors.end());
+    for(const auto& original : cell.originals) {
+        Cell restored{original.id,original.row,original.column,1,1,original.text};
+        if(original.row==cell.row && original.column==cell.column && cell.text!=cell.mergedText) restored.text=cell.text;
+        next.anchors.push_back(std::move(restored));
+    }
+    *this=std::move(next);
+}
 }

@@ -8,6 +8,7 @@ class TableModel {
     std::vector<double> columnWidths;
     std::vector<Cell> anchors;
     CellId nextId = 1;
+    TableModel() = default;
 public:
     static TableModel create(int rows, int columns, double widthPt, double heightPt);
     int rows() const { return static_cast<int>(rowHeights.size()); }
@@ -21,5 +22,7 @@ public:
     const Cell& cellById(CellId id) const;
     void setText(CellId id, const std::u16string& text);
     void resizeBoundary(bool vertical, int boundary, double delta);
+    void merge(CellRange range);
+    void split(CellId id);
 };
 }
