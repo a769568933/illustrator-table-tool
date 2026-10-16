@@ -1,6 +1,7 @@
 #include "Sidebar.hpp"
 #include "AIContext.h"
 #include "SPInterf.h"
+#include "Trace.hpp"
 #include <algorithm>
 
 namespace {
@@ -9,12 +10,14 @@ const wchar_t* labels[]={L"新建表格…",L"表格选择工具",L"合并单元
     L"上方插入行",L"下方插入行",L"左侧插入列",L"右侧插入列",L"删除所选行",L"删除所选列",L"转换普通对象",L"单元格样式…"};
 }
 void Sidebar::create(SPBasicSuite* value,SPPluginRef self,Suites& suites,const std::array<AIMenuItemHandle,12>& items) {
-    if(panel) return;basic=value;plugin=self;commands=items;
+    if(panel) return;basic=value;plugin=self;commands=items;traceStage("panel.create.start");
     auto panels=suites.get<AIPanelSuite>(kAIPanelSuite,kAIPanelVersion);
     AISize minimum{260,470};checked(panels->Create(plugin,ai::UnicodeString::FromUTF8("IllustratorTableTool.Sidebar"),
         ai::UnicodeString::FromUTF8("画布表格"),1,minimum,true,nullptr,this,panel));
+    traceStage("panel.create.done");
     try {
-        checked(panels->SetPreferredSizes(panel,minimum));checked(panels->SetSVGIconResourceID(panel,16001,16001));
+        checked(panels->SetPreferredSizes(panel,minimum));
+        if(panels->SetSVGIconResourceID(panel,16001,16001)) traceStage("panel.icon.unavailable");
         checked(panels->GetPlatformWindow(panel,window));if(!window) throw static_cast<ASErr>(kCantHappenErr);
         font=CreateFontW(-13,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,DEFAULT_QUALITY,DEFAULT_PITCH,L"Microsoft YaHei UI");
         auto module=reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(window,GWLP_HINSTANCE));
@@ -29,7 +32,7 @@ void Sidebar::create(SPBasicSuite* value,SPPluginRef self,Suites& suites,const s
         if(!SetPropW(window,property,this)) throw static_cast<ASErr>(kCantHappenErr);
         original=reinterpret_cast<WNDPROC>(SetWindowLongPtrW(window,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(&Sidebar::procedure)));
         if(!original) throw static_cast<ASErr>(kCantHappenErr);
-        layout();update(false,L"请先选择单元格。\n单击选格，Shift 多选，双击编辑文字。");
+        layout();update(false,L"请先选择单元格。\n单击选格，Shift 多选，双击编辑文字。");traceStage("panel.controls.ready");
     } catch(...) {destroy(suites);throw;}
 }
 void Sidebar::layout() {
@@ -42,7 +45,7 @@ void Sidebar::layout() {
     }
 }
 void Sidebar::show(Suites& suites) {
-    if(panel) checked(suites.get<AIPanelSuite>(kAIPanelSuite,kAIPanelVersion)->Show(panel,true));
+    if(panel) {traceStage("panel.show.start");checked(suites.get<AIPanelSuite>(kAIPanelSuite,kAIPanelVersion)->Show(panel,true));traceStage("panel.show.done");}
 }
 void Sidebar::update(bool selected,const std::wstring& message) {
     selectionEnabled=selected;if(!window) return;SetWindowTextW(status,message.c_str());

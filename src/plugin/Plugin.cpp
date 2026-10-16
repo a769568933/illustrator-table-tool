@@ -117,7 +117,7 @@ table::Point local(const NativeTable& t,AIRealPoint p){ return {p.h-t.origin.h,t
 void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* message) {
     if(message->tool!=state.tool) return;
     auto annotations=suites.get<AIAnnotatorSuite>(kAIAnnotatorSuite,kAIAnnotatorVersion);
-    if(is(selector,kSelectorAISelectTool)) { state.selectedTool=true; invalidate(suites); return; }
+    if(is(selector,kSelectorAISelectTool)) { state.selectedTool=true; showSidebar(state,suites); invalidate(suites); return; }
     if(is(selector,kSelectorAIDeselectTool)) {
         state.selectedTool=false; state.interaction.cancel(); state.placing=false; invalidate(suites); return;
     }
@@ -239,7 +239,7 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
         if(is(caller,kCallerAINotify)&&is(selector,kSelectorAINotify)) {
             auto notifier=static_cast<AINotifierMessage*>(message)->notifier;
             if(notifier==state->started) showSidebar(*state,suites);
-            else if(notifier==state->documentSwitch||notifier==state->documentClose) {
+            else if((notifier==state->documentSwitch||notifier==state->documentClose)&&!state->mutating) {
                 state->interaction.cancel();state->interaction.clearSelection();state->active.reset();
                 state->tables.clear();state->placing=false;state->pending.reset();state->lastCell=0;
                 state->sidebar.update(false,L"文档已切换或关闭，请重新选择表格。");
