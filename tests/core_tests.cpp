@@ -123,8 +123,37 @@ void merging() {
     model.merge({1,1,0,0});
     expect(model.cellAt(1,1).id==a,"range direction normalized");
 }
+void structure() {
+    using namespace table;
+    auto model=TableModel::create(3,3,90,90);
+    auto a=model.cellAt(0,0).id,b=model.cellAt(1,0).id;
+    model.setText(a,u"anchor"); model.setText(b,u"survivor");
+    model.merge({0,0,1,1});
+    model.insertRows(1,1);
+    expect(model.rows()==4 && model.cellAt(2,1).rowSpan==3,"insert inside merge expands span");
+    model.insertColumns(1,1);
+    expect(model.columns()==4 && model.cellAt(2,2).columnSpan==3,"column insert expands span");
+    model.split(a);
+    expect(model.cellAt(1,1).text.empty() && model.cellAt(2,0).id==b && model.cellAt(2,0).text==u"survivor","split after insert restores old and new slots");
+    model.merge({0,0,2,2});
+    model.eraseRows(0,2);
+    expect(model.rows()==2 && model.cellAt(0,0).id==a,"delete merged anchor migrates stable identity");
+    model.split(a);
+    expect(model.cellAt(0,0).text.find(u"anchor")!=std::u16string::npos && model.cellAt(0,0).text.find(u"survivor")!=std::u16string::npos,"anchor deletion retains remaining and anchor text");
+    auto before=model.width(); model.eraseColumns(1,2);
+    expect(model.columns()==2 && close(model.width(),before-60),"delete columns shrinks width");
+    rejects([&]{model.eraseRows(0,model.rows());});
+    rejects([&]{model.eraseColumns(0,model.columns());});
+    rejects([&]{model.insertRows(-1,1);}); rejects([&]{model.insertColumns(3,1);});
+    rejects([&]{model.insertRows(0,0);}); rejects([&]{model.eraseRows(1,3);});
+    expect(model.rows()==2 && model.columns()==2,"failed structure edits preserve dimensions");
+    auto maximum=TableModel::create(100,20,mm(40),mm(200));
+    rejects([&]{maximum.insertColumns(0,1);}); rejects([&]{maximum.insertRows(100,1);});
+    auto same=model.cellAt(0,0).id; model.insertColumns(0,1);
+    expect(model.cellAt(0,1).id==same,"insert at start shifts rather than expands cell");
+}
 }
 int main() {
-    try { creation(); geometry(); interaction(); merging(); std::cout << checks << " checks passed\n"; return 0; }
+    try { creation(); geometry(); interaction(); merging(); structure(); std::cout << checks << " checks passed\n"; return 0; }
     catch (const std::exception& error) { std::cerr << "FAIL after " << checks << " checks: " << error.what() << '\n'; return 1; }
 }

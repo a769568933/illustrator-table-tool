@@ -9,6 +9,7 @@ class TableModel {
     std::vector<Cell> anchors;
     CellId nextId = 1;
     TableModel() = default;
+    void changeTracks(bool vertical, int first, int count, bool insert);
 public:
     static TableModel create(int rows, int columns, double widthPt, double heightPt);
     int rows() const { return static_cast<int>(rowHeights.size()); }
@@ -24,5 +25,9 @@ public:
     void resizeBoundary(bool vertical, int boundary, double delta);
     void merge(CellRange range);
     void split(CellId id);
+    void insertRows(int before,int count) { changeTracks(false,before,count,true); }
+    void insertColumns(int before,int count) { changeTracks(true,before,count,true); }
+    void eraseRows(int first,int count) { changeTracks(false,first,count,false); }
+    void eraseColumns(int first,int count) { changeTracks(true,first,count,false); }
 };
 }

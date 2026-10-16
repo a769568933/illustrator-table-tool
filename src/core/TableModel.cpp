@@ -96,4 +96,71 @@ void TableModel::split(CellId id) {
     }
     *this=std::move(next);
 }
+void TableModel::changeTracks(bool vertical,int first,int count,bool insert) {
+    const int total=vertical ? columns() : rows();
+    const int limit=vertical ? 50 : 100;
+    if(count<=0 || first<0 || first>total ||
+        (insert ? count>limit-total : count>=total || first>total-count))
+        throw ValidationError("Invalid row or column range");
+    const int remaining=insert ? total+count : total-count;
+    if(remaining*(vertical ? rows() : columns())>2000) throw ValidationError("Table exceeds 2000 cells");
+    auto next=*this;
+    auto& sizes=vertical ? next.columnWidths : next.rowHeights;
+    auto position=[=](const OriginalCell& cell){ return vertical ? cell.column : cell.row; };
+    auto moveOriginal=[=](OriginalCell& cell,int p){ (vertical ? cell.column : cell.row)=p; };
+    if(insert) {
+        double size=sizes[std::min(first,total-1)];
+        sizes.insert(sizes.begin()+first,count,size);
+        for(auto& cell : next.anchors) {
+            auto& begin=vertical ? cell.column : cell.row;
+            auto& span=vertical ? cell.columnSpan : cell.rowSpan;
+            if(first<=begin) {
+                begin+=count;
+                for(auto& original : cell.originals) moveOriginal(original,position(original)+count);
+            } else if(first<begin+span) {
+                span+=count;
+                for(auto& original : cell.originals) if(position(original)>=first) moveOriginal(original,position(original)+count);
+                for(int p=first;p<first+count;++p) {
+                    const int crossBegin=vertical ? cell.row : cell.column;
+                    const int crossSpan=vertical ? cell.rowSpan : cell.columnSpan;
+                    for(int q=crossBegin;q<crossBegin+crossSpan;++q)
+                        cell.originals.push_back({next.nextId++,vertical ? q : p,vertical ? p : q,{}});
+                }
+            }
+        }
+        for(int r=0;r<next.rows();++r) for(int c=0;c<next.columns();++c) {
+            bool covered=false;
+            for(const auto& cell : next.anchors)
+                if(r>=cell.row&&r<cell.row+cell.rowSpan&&c>=cell.column&&c<cell.column+cell.columnSpan) {covered=true;break;}
+            if(!covered) next.anchors.push_back({next.nextId++,r,c,1,1,{}});
+        }
+    } else {
+        sizes.erase(sizes.begin()+first,sizes.begin()+first+count);
+        std::vector<Cell> survivors;
+        for(auto cell : next.anchors) {
+            auto& begin=vertical ? cell.column : cell.row;
+            auto& span=vertical ? cell.columnSpan : cell.rowSpan;
+            const int oldBegin=begin, oldSpan=span;
+            const int overlap=std::max(0,std::min(begin+span,first+count)-std::max(begin,first));
+            if(overlap==oldSpan) continue;
+            std::u16string anchorText;
+            for(const auto& original : cell.originals) if(original.id==cell.id) anchorText=original.text;
+            span-=overlap;
+            begin=begin>=first+count ? begin-count : begin>=first ? first : begin;
+            cell.originals.erase(std::remove_if(cell.originals.begin(),cell.originals.end(),[&](const OriginalCell& original){
+                return position(original)>=first && position(original)<first+count;
+            }),cell.originals.end());
+            for(auto& original : cell.originals) if(position(original)>=first+count) moveOriginal(original,position(original)-count);
+            if(oldBegin>=first && oldBegin<first+count) {
+                for(auto& original : cell.originals) if(original.row==cell.row && original.column==cell.column) {
+                    original.id=cell.id;
+                    if(!anchorText.empty()) original.text=anchorText+(original.text.empty() ? u"" : u"\n"+original.text);
+                }
+            }
+            survivors.push_back(std::move(cell));
+        }
+        next.anchors=std::move(survivors);
+    }
+    *this=std::move(next);
+}
 }
