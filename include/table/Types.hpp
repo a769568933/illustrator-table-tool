@@ -12,6 +12,7 @@ public: using std::runtime_error::runtime_error;
 };
 struct Point { double x = 0; double y = 0; };
 struct Rect { double left; double top; double right; double bottom; };
+struct CellRange { int firstRow; int firstColumn; int lastRow; int lastColumn; };
 struct Cell {
     CellId id = 0;
     int row = 0;

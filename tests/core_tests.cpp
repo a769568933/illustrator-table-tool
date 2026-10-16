@@ -1,5 +1,6 @@
 #include "table/TableModel.hpp"
 #include "table/Geometry.hpp"
+#include "table/Interaction.hpp"
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -62,8 +63,45 @@ void geometry() {
     (void)shared;
     rejects([&] { Geometry::cellBounds(model,0); });
 }
+void interaction() {
+    using namespace table;
+    auto model=TableModel::create(2,2,100,60);
+    for (double zoom : {0.25,1.0,4.0}) {
+        const auto hit=Geometry::hitTest(model,{50+2/zoom,15},zoom,3);
+        expect(hit.kind==HitKind::Edge && hit.edge->vertical && hit.edge->track==1, "screen pixel tolerance at all zooms");
+        expect(Geometry::hitTest(model,{50+4/zoom,15},zoom,3).kind==HitKind::Cell,"outside border tolerance selects cell");
+    }
+    Interaction action;
+    action.pointerDown(model,{10,10},false,1);
+    expect(action.selection()->firstRow==0 && action.selection()->lastColumn==0,"click selects one cell");
+    action.pointerDown(model,{80,45},true,1);
+    expect(action.selection()->firstRow==0 && action.selection()->lastRow==1 && action.selection()->lastColumn==1,"shift selects rectangle");
+    action.pointerDown(model,{150,150},false,1);
+    expect(!action.selection(),"outside clears selection");
+    action.pointerDown(model,{50,15},false,1);
+    action.pointerMove({60,15});
+    expect(close(model.widths()[0],50),"drag never mutates source");
+    auto resized=action.pointerUp();
+    expect(resized && close(resized->widths()[0],60) && close(resized->widths()[1],40),"internal drag changes adjacent columns");
+    expect(close(resized->width(),100),"internal drag preserves total width");
+    action.pointerDown(model,{100,15},false,1); action.pointerMove({120,15});
+    resized=action.pointerUp();
+    expect(resized && close(resized->width(),120) && close(resized->widths()[0],50),"outer drag changes last column and total width");
+    action.pointerDown(model,{20,30},false,1); action.pointerMove({20,100});
+    resized=action.pointerUp();
+    expect(resized && close(resized->heights()[1],minimumTrack) && close(resized->height(),60),"row drag clamps to minimum");
+    action.pointerDown(model,{20,60},false,1); action.pointerMove({20,70});
+    resized=action.pointerUp();
+    expect(resized && close(resized->height(),70),"bottom border drag");
+    action.pointerDown(model,{50,15},false,1); action.pointerMove({70,15}); action.cancel();
+    expect(!action.pointerUp() && !action.preview(),"cancel discards drag");
+    action.pointerDown(model,{50,15},false,1);
+    expect(!action.pointerUp(),"stationary click commits nothing");
+    rejects([&] { Geometry::hitTest(model,{10,10},0,3); });
+    rejects([&] { Geometry::hitTest(model,{10,10},1,-1); });
+}
 }
 int main() {
-    try { creation(); geometry(); std::cout << checks << " checks passed\n"; return 0; }
+    try { creation(); geometry(); interaction(); std::cout << checks << " checks passed\n"; return 0; }
     catch (const std::exception& error) { std::cerr << "FAIL after " << checks << " checks: " << error.what() << '\n'; return 1; }
 }

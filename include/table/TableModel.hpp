@@ -20,5 +20,6 @@ public:
     const Cell& cellAt(int row, int column) const;
     const Cell& cellById(CellId id) const;
     void setText(CellId id, const std::u16string& text);
+    void resizeBoundary(bool vertical, int boundary, double delta);
 };
 }

@@ -1,6 +1,7 @@
 #include <windows.h>
 #pragma code_page(65001)
 plugin pipl "@PIPL_OUTPUT@"
+16001 svg "@PROJECT_SOURCE_DIR@/resources/Tool.svg"
 1 VERSIONINFO
 FILEVERSION 0,1,0,0
 PRODUCTVERSION 0,1,0,0

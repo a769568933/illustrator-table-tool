@@ -1,0 +1,36 @@
+#include "table/Interaction.hpp"
+#include <algorithm>
+
+namespace table {
+void Interaction::pointerDown(const TableModel& model, Point point, bool shift, double zoom) {
+    cancel();
+    auto hit=Geometry::hitTest(model,point,zoom,3);
+    if (hit.kind==HitKind::Edge && hit.edge->track>0) {
+        source=model; candidate=model; boundary=hit.edge; start=point;
+        return;
+    }
+    if (hit.kind!=HitKind::Cell) { clearSelection(); return; }
+    const auto& cell=model.cellById(hit.cell);
+    if (!shift || !anchor) anchor=cell.id;
+    const Cell* first=nullptr;
+    try { first=&model.cellById(*anchor); }
+    catch (const ValidationError&) { anchor=cell.id; first=&cell; }
+    selected=CellRange{std::min(first->row,cell.row),std::min(first->column,cell.column),
+        std::max(first->row+first->rowSpan-1,cell.row+cell.rowSpan-1),
+        std::max(first->column+first->columnSpan-1,cell.column+cell.columnSpan-1)};
+}
+void Interaction::pointerMove(Point point) {
+    if (!boundary || !source) return;
+    auto next=*source;
+    double delta=boundary->vertical ? point.x-start.x : point.y-start.y;
+    next.resizeBoundary(boundary->vertical,boundary->track,delta);
+    changed=next.widths()!=source->widths() || next.heights()!=source->heights();
+    candidate=std::move(next);
+}
+std::optional<TableModel> Interaction::pointerUp() {
+    auto result=changed ? candidate : std::nullopt;
+    cancel();
+    return result;
+}
+void Interaction::cancel() { source.reset(); candidate.reset(); boundary.reset(); changed=false; }
+}

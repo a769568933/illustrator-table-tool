@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(TABLE_BUILD_PLUGIN "Build the Illustrator native plugin (requires the Adobe SDK)" ON)
 include(CTest)
-add_library(table_core STATIC src/core/TableModel.cpp src/core/Geometry.cpp)
+add_library(table_core STATIC src/core/TableModel.cpp src/core/Geometry.cpp src/core/Interaction.cpp)
 target_include_directories(table_core PUBLIC include)
 if(MSVC)
   target_compile_options(table_core PRIVATE /utf-8 /W4)
@@ -35,7 +35,7 @@ if(TABLE_BUILD_PLUGIN)
       "${ILLUSTRATOR_SDK_ROOT}/tools/pipl/pipl_gen/template_plugin.json")
   configure_file(resources/Plugin.rc.in "${CMAKE_CURRENT_BINARY_DIR}/Plugin.rc" @ONLY)
   set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/Plugin.rc" PROPERTIES OBJECT_DEPENDS "${PIPL_OUTPUT}")
-  add_library(IllustratorTableTool SHARED src/plugin/Plugin.cpp
+  add_library(IllustratorTableTool SHARED src/plugin/Plugin.cpp src/plugin/DocumentAdapter.cpp
     "${ILLUSTRATOR_SDK_ROOT}/illustratorapi/illustrator/IAIUnicodeString.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/Plugin.rc" "${PIPL_OUTPUT}" resources/Plugin.def)
   target_include_directories(IllustratorTableTool PRIVATE
@@ -47,7 +47,7 @@ if(TABLE_BUILD_PLUGIN)
   target_compile_definitions(IllustratorTableTool PRIVATE WIN_ENV _WINDOWS NOMINMAX WIN32_LEAN_AND_MEAN)
   target_compile_options(IllustratorTableTool PRIVATE /utf-8 /Zp8 /Zc:wchar_t- /Zc:sizedDealloc- /EHsc)
   set_property(TARGET IllustratorTableTool PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-  target_link_libraries(IllustratorTableTool PRIVATE user32)
+  target_link_libraries(IllustratorTableTool PRIVATE user32 table_core)
   set_target_properties(IllustratorTableTool PROPERTIES PREFIX "" SUFFIX ".aip"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugin")
 endif()

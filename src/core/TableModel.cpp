@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <limits>
 
 namespace table {
 TableModel TableModel::create(int rows, int columns, double widthPt, double heightPt) {
@@ -36,5 +37,15 @@ void TableModel::setText(CellId id, const std::u16string& text) {
     auto found=std::find_if(anchors.begin(),anchors.end(),[=](const Cell& c){return c.id==id;});
     if (found == anchors.end()) throw ValidationError("Unknown cell identifier");
     found->text=text;
+}
+void TableModel::resizeBoundary(bool vertical, int boundary, double delta) {
+    auto& sizes=vertical ? columnWidths : rowHeights;
+    if (boundary<1 || boundary>static_cast<int>(sizes.size()) || !std::isfinite(delta))
+        throw ValidationError("Invalid resize boundary or delta");
+    double lower=minimumTrack-sizes[boundary-1];
+    double upper=boundary<static_cast<int>(sizes.size()) ? sizes[boundary]-minimumTrack : std::numeric_limits<double>::max()-(vertical ? width() : height());
+    delta=std::clamp(delta,lower,upper);
+    sizes[boundary-1]+=delta;
+    if (boundary<static_cast<int>(sizes.size())) sizes[boundary]-=delta;
 }
 }

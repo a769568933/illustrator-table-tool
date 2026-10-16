@@ -1,5 +1,8 @@
 #include "table/Geometry.hpp"
 #include <numeric>
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace table {
 namespace {
@@ -8,6 +11,24 @@ std::vector<double> positions(const std::vector<double>& sizes) {
     std::partial_sum(sizes.begin(),sizes.end(),result.begin()+1);
     return result;
 }
+}
+HitResult Geometry::hitTest(const TableModel& model, Point point, double zoom, double tolerancePx) {
+    if (!std::isfinite(zoom) || zoom<=0 || !std::isfinite(tolerancePx) || tolerancePx<0 ||
+        !std::isfinite(point.x) || !std::isfinite(point.y)) throw ValidationError("Invalid hit-test parameters");
+    double closest=std::numeric_limits<double>::infinity();
+    std::optional<Edge> best;
+    for (const auto& edge : visibleEdges(model)) {
+        double x=std::clamp(point.x,edge.from.x,edge.to.x);
+        double y=std::clamp(point.y,edge.from.y,edge.to.y);
+        double distance=std::hypot(point.x-x,point.y-y)*zoom;
+        if (distance<=tolerancePx && distance<closest) { best=edge; closest=distance; }
+    }
+    if (best) return {HitKind::Edge,0,best};
+    if (point.x<0 || point.y<0 || point.x>=model.width() || point.y>=model.height()) return {};
+    auto x=positions(model.widths()),y=positions(model.heights());
+    int c=static_cast<int>(std::upper_bound(x.begin(),x.end(),point.x)-x.begin())-1;
+    int r=static_cast<int>(std::upper_bound(y.begin(),y.end(),point.y)-y.begin())-1;
+    return {HitKind::Cell,model.cellAt(r,c).id,{}};
 }
 Rect Geometry::cellBounds(const TableModel& model, CellId id) {
     const auto& cell=model.cellById(id);
