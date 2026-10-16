@@ -22,6 +22,12 @@ jobs:
         run: cmake --build build/core --config Release --parallel 2
       - name: Test table model and geometry
         run: ctest --test-dir build/core -C Release --output-on-failure
+      - name: Simulate repeated sidebar workflows
+        shell: pwsh
+        run: |
+          $env:TABLE_SIMULATOR = (Resolve-Path 'build/core/Release/table_simulator.exe').Path
+          python -m unittest discover -s tests -p 'test_simulation.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Sidebar simulation tests failed.' }
   native:
     needs: build-tools-tests
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/native-table')
