@@ -45,7 +45,7 @@ void runHostAcceptance(Suites& suites) {
         Lease<ATE::TextRangeSuite,ATE::TextRangeRef> range{ranges};checked(text->GetATETextRange(found->text,&range.value));
         checked(ranges->SetRange(range.value,offset,offset+1));
         Lease<ATE::CharFeaturesSuite,ATE::CharFeaturesRef> features{chars};checked(ranges->GetUniqueCharFeatures(range.value,&features.value));
-        ATEBool8 assigned=false;ATETextDOM::Float value=0;checked(chars->GetFontSize(features.value,&assigned,&value));
+        ATE::ATEBool8 assigned=false;ATETextDOM::Float value=0;checked(chars->GetFontSize(features.value,&assigned,&value));
         require(assigned,"Test character font size is not assigned");return value;
     };
     require(std::abs(fontSize(first,0)-24)<0.01&&std::abs(fontSize(first,4)-12)<0.01,"Mixed-font test setup failed");
