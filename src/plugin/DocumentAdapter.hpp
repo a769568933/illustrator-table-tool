@@ -17,6 +17,7 @@
 
 struct NativeCell { table::CellId id; AIArtHandle fill; AIArtHandle text; };
 struct RejectedTable { AIRealRect bounds; std::wstring reason; };
+struct TrackDeletion { bool vertical; int first; int count; };
 struct NativeTable {
     table::TableModel model;
     AIDocumentHandle document = nullptr;
@@ -25,6 +26,8 @@ struct NativeTable {
     AIRealPoint origin{};
     std::vector<NativeCell> cells;
     std::vector<AIArtHandle> edges;
+    AIArtHandle archive=nullptr;
+    std::vector<NativeCell> snapshots;
 };
 class DocumentAdapter {
     AIArtSuite* art;
@@ -55,6 +58,9 @@ class DocumentAdapter {
     void writeModel(const NativeTable& table,const table::TableModel& model);
     NativeTable readTable(AIArtHandle group);
     void setText(AIArtHandle frame,const std::u16string& value);
+    std::u16string textContent(AIArtHandle frame) const;
+    NativeCell duplicateCell(const NativeCell& source,table::CellId id,AIArtHandle parent,bool snapshot);
+    void formattedText(AIArtHandle destination,const std::vector<AIArtHandle>& sources);
     NativeCell createCell(const NativeTable& table,const table::Cell& cell);
     AIColor color(const table::Color& value);
     void styleCell(const NativeCell& native,const table::CellStyle& style);
@@ -69,7 +75,7 @@ public:
     bool overflows(const NativeCell& cell);
     std::vector<NativeTable> discoverTables(std::vector<RejectedTable>* rejected=nullptr);
     void synchronize(NativeTable& table);
-    void applyStructure(NativeTable& table,const table::TableModel& model);
+    void applyStructure(NativeTable& table,const table::TableModel& model,std::optional<TrackDeletion> deletion=std::nullopt);
     std::vector<FontChoice> installedFonts();
     void applyStyle(NativeTable& table,table::CellRange range,const table::CellStyle& style);
     void detach(const NativeTable& table);

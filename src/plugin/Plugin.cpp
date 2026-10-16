@@ -350,7 +350,12 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
                 checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
                 traceStage("command.tool.selected");
                 if(index==8) {adapter.detach(table);state->active.reset();}
-                else adapter.applyStructure(table,model);
+                else {
+                    std::optional<TrackDeletion> deletion;
+                    if(index==6) deletion=TrackDeletion{false,selection.firstRow,selection.lastRow-selection.firstRow+1};
+                    if(index==7) deletion=TrackDeletion{true,selection.firstColumn,selection.lastColumn-selection.firstColumn+1};
+                    adapter.applyStructure(table,model,deletion);
+                }
                 traceStage("command.artwork.done");
                 state->interaction.clearSelection();invalidate(suites);
             }

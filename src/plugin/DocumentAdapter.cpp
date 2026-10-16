@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <set>
 #include "table/Serialization.hpp"
 
 namespace {
@@ -23,6 +24,7 @@ struct DictionaryLease {
 };
 constexpr const char* modelKey="IllustratorTableTool.Model.v1";
 constexpr const char* roleKey="IllustratorTableTool.Role.v1";
+constexpr const char* snapshotKey="IllustratorTableTool.NativeSnapshot.v1";
 table::Rect textBounds(table::Rect bounds,double requested) {
     const auto padding=std::min({requested,(bounds.right-bounds.left)/4,(bounds.bottom-bounds.top)/4});
     bounds.left+=padding; bounds.top+=padding; bounds.right-=padding; bounds.bottom-=padding;
@@ -120,6 +122,12 @@ bool DocumentAdapter::valid(const NativeTable& table) const {
     if(!editable(table.frame)) return false;
     for(const auto& cell : table.cells) if(!editable(cell.fill)||!editable(cell.text)) return false;
     for(auto edge : table.edges) if(!editable(edge)) return false;
+    if(table.archive) {
+        ai::int32 flags=0;
+        if(!art->ValidArt(table.archive,false)||art->GetArtUserAttr(table.archive,kArtHidden,&flags)||!(flags&kArtHidden)) return false;
+        for(const auto& snapshot:table.snapshots)
+            if(!art->ValidArt(snapshot.fill,false)||!art->ValidArt(snapshot.text,false)) return false;
+    }
     return true;
 }
 void DocumentAdapter::applyGeometry(NativeTable& table,const table::TableModel& model) {
@@ -152,6 +160,9 @@ void DocumentAdapter::writeModel(const NativeTable& table,const table::TableMode
     auto bytes=table::serialize(model);
     DictionaryLease dictionary{dictionaries};checked(art->GetDictionary(table.group,&dictionary.value));
     checked(dictionaries->SetBinaryEntry(dictionary.value,dictionaries->Key(modelKey),bytes.data(),bytes.size()));
+    auto archiveKey=dictionaries->Key(snapshotKey);
+    if(table.archive) checked(dictionaries->SetIntegerEntry(dictionary.value,archiveKey,1));
+    else if(dictionaries->IsKnown(dictionary.value,archiveKey)) checked(dictionaries->DeleteEntry(dictionary.value,archiveKey));
 }
 void DocumentAdapter::setText(AIArtHandle frame,const std::u16string& value) {
     RangeLease range{ranges};checked(text->GetATETextRange(frame,&range.value));
@@ -159,6 +170,37 @@ void DocumentAdapter::setText(AIArtHandle frame,const std::u16string& value) {
     auto content=value;std::replace(content.begin(),content.end(),u'\n',u'\r');
     static_assert(sizeof(ATETextDOM::Unicode)==sizeof(char16_t),"SDK Unicode must be UTF-16");
     if(!content.empty()) checked(ranges->InsertBefore_AsUnicode(range.value,reinterpret_cast<const ATETextDOM::Unicode*>(content.data()),static_cast<ATETextDOM::Int32>(content.size())));
+}
+std::u16string DocumentAdapter::textContent(AIArtHandle frame) const {
+    RangeLease range{ranges};checked(text->GetATETextRange(frame,&range.value));
+    ATETextDOM::Int32 length=0;checked(ranges->GetSize(range.value,&length));
+    if(length<0||length>1024*1024) throw table::ValidationError("Cell text exceeds storage limit");
+    std::vector<ATETextDOM::Unicode> buffer(static_cast<std::size_t>(length)+1,0);ATETextDOM::Int32 actual=0;
+    checked(ranges->GetContents_AsUnicode(range.value,buffer.data(),length+1,&actual));
+    if(actual<0||actual>length) throw table::ValidationError("Invalid cell text size");
+    std::u16string value;value.reserve(actual);for(int i=0;i<actual;++i) value+=static_cast<char16_t>(buffer[i]);
+    std::replace(value.begin(),value.end(),u'\r',u'\n');return value;
+}
+NativeCell DocumentAdapter::duplicateCell(const NativeCell& source,table::CellId id,AIArtHandle parent,bool snapshot) {
+    NativeCell copy{id,nullptr,nullptr};
+    checked(art->DuplicateArt(source.fill,kPlaceInsideOnTop,parent,&copy.fill));
+    checked(art->DuplicateArt(source.text,kPlaceInsideOnTop,parent,&copy.text));
+    checked(art->SetArtUserAttr(copy.fill,kArtHidden|kArtLocked,0));
+    checked(art->SetArtUserAttr(copy.text,kArtHidden|kArtLocked,0));
+    role(copy.fill,(snapshot?"snapshot-fill:":"fill:")+std::to_string(id));
+    role(copy.text,(snapshot?"snapshot-text:":"text:")+std::to_string(id));return copy;
+}
+void DocumentAdapter::formattedText(AIArtHandle destination,const std::vector<AIArtHandle>& sources) {
+    setText(destination,{});
+    bool first=true;
+    for(auto source:sources) {
+        RangeLease insertion{ranges},content{ranges};checked(text->GetATETextRange(destination,&insertion.value));
+        if(!first) {const ATETextDOM::Unicode newline='\r';checked(ranges->InsertAfter_AsUnicode(insertion.value,&newline,1));}
+        // Reacquire after insertion: a text range's endpoints need not expand with inserted text.
+        RangeLease end{ranges};checked(text->GetATETextRange(destination,&end.value));
+        checked(text->GetATETextRange(source,&content.value));
+        checked(ranges->InsertAfter_AsTextRange(end.value,content.value));first=false;
+    }
 }
 NativeCell DocumentAdapter::createCell(const NativeTable& table,const table::Cell& cell) {
     NativeCell native{cell.id,newPath(table.group),nullptr};
@@ -195,7 +237,34 @@ NativeTable DocumentAdapter::readTable(AIArtHandle group) {
     for(const auto& cell : table.model.cells()) table.cells.push_back({cell.id,required("fill:"+std::to_string(cell.id),kPathArt),required("text:"+std::to_string(cell.id),kTextFrameArt)});
     const auto edges=table::Geometry::visibleEdges(table.model);
     for(std::size_t i=0;i<edges.size();++i) table.edges.push_back(required("edge:"+std::to_string(i),kPathArt));
-    if(roles.size()!=1+2*table.cells.size()+table.edges.size()) throw table::ValidationError("Unexpected table artwork roles");
+    const auto archiveRole=roles.find("archive");
+    if(archiveRole!=roles.end()) {
+        table.archive=required("archive",kGroupArt);
+        std::map<std::string,AIArtHandle> saved;
+        AIArtHandle item=nullptr;checked(art->GetArtFirstChild(table.archive,&item));
+        while(item) {
+            const auto name=role(item);
+            if(name.empty()||!saved.emplace(name,item).second||saved.size()>4000) throw table::ValidationError("Invalid native format archive");
+            AIArtHandle next=nullptr;checked(art->GetArtSibling(item,&next));item=next;
+        }
+        std::set<table::CellId> originals;
+        for(const auto& cell:table.model.cells()) for(const auto& original:cell.originals) originals.insert(original.id);
+        for(auto id:originals) {
+            auto fill=saved.find("snapshot-fill:"+std::to_string(id)),content=saved.find("snapshot-text:"+std::to_string(id));
+            if(fill==saved.end()&&content==saved.end()) continue; // Newly inserted blank slots have no archive yet.
+            if(fill==saved.end()||content==saved.end()) throw table::ValidationError("Incomplete native format snapshot");
+            short fillType=0,textType=0;checked(art->GetArtType(fill->second,&fillType));checked(art->GetArtType(content->second,&textType));
+            if(fillType!=kPathArt||textType!=kTextFrameArt) throw table::ValidationError("Unexpected native format snapshot type");
+            table.snapshots.push_back({id,fill->second,content->second});
+        }
+        if(saved.size()!=2*table.snapshots.size()) throw table::ValidationError("Unexpected native format snapshot roles");
+    }
+    auto archiveKey=dictionaries->Key(snapshotKey);
+    if(dictionaries->IsKnown(dictionary.value,archiveKey)) {
+        ai::int32 version=0;checked(dictionaries->GetIntegerEntry(dictionary.value,archiveKey,&version));
+        if(version!=1||!table.archive) throw table::ValidationError("Missing or unsupported native format archive");
+    }
+    if(roles.size()!=1+2*table.cells.size()+table.edges.size()+(table.archive?1:0)) throw table::ValidationError("Unexpected table artwork roles");
     if(!valid(table)) throw table::ValidationError("Table is locked, hidden or incomplete");
     ai::int16 count=0;checked(paths->GetPathSegmentCount(table.frame,&count));if(count!=4) throw table::ValidationError("Invalid table frame");
     AIPathSegment corners[4]{};checked(paths->GetPathSegments(table.frame,0,4,corners));
@@ -205,14 +274,7 @@ NativeTable DocumentAdapter::readTable(AIArtHandle group) {
     const double width=corners[1].p.h-corners[0].p.h,height=corners[0].p.v-corners[3].p.v;
     table.model.scale(width/table.model.width(),height/table.model.height());table.origin=corners[0].p;
     for(const auto& cell : table.cells) {
-        RangeLease range{ranges};checked(text->GetATETextRange(cell.text,&range.value));
-        ATETextDOM::Int32 length=0;checked(ranges->GetSize(range.value,&length));
-        if(length<0||length>1024*1024) throw table::ValidationError("Cell text exceeds storage limit");
-        std::vector<ATETextDOM::Unicode> buffer(static_cast<std::size_t>(length)+1,0);ATETextDOM::Int32 actual=0;
-        checked(ranges->GetContents_AsUnicode(range.value,buffer.data(),length+1,&actual));
-        if(actual<0||actual>length) throw table::ValidationError("Invalid cell text size");
-        std::u16string value;value.reserve(actual);for(int i=0;i<actual;++i) value+=static_cast<char16_t>(buffer[i]);
-        std::replace(value.begin(),value.end(),u'\r',u'\n');table.model.setText(cell.id,value);
+        table.model.setText(cell.id,textContent(cell.text));
     }
     return table;
 }
@@ -259,25 +321,93 @@ void DocumentAdapter::synchronize(NativeTable& table) {
     if(!valid(table)) throw table::ValidationError("Table belongs to a closed document or contains invalid artwork");
     table=readTable(table.group);
 }
-void DocumentAdapter::applyStructure(NativeTable& table,const table::TableModel& model) {
+void DocumentAdapter::applyStructure(NativeTable& table,const table::TableModel& model,std::optional<TrackDeletion> deletion) {
     traceStage("structure.begin");
     if(!valid(table)) throw static_cast<ASErr>(kBadParameterErr);
     auto next=table;next.model=model;next.cells.clear();next.edges.clear();
     try {
+        std::map<table::CellId,NativeCell> snapshots;
+        for(const auto& saved:table.snapshots) snapshots.emplace(saved.id,saved);
+        std::set<table::CellId> needed;
+        auto ensureArchive=[&] {
+            if(next.archive) return;
+            checked(art->NewArt(kGroupArt,kPlaceInsideOnTop,next.group,&next.archive));role(next.archive,"archive");
+            checked(art->SetArtName(next.archive,ai::UnicodeString::FromUTF8("表格原始格式（隐藏）")));
+            checked(art->SetArtUserAttr(next.archive,kArtHidden,kArtHidden));
+        };
+        for(const auto& owner:model.cells()) for(const auto& original:owner.originals) {
+            needed.insert(original.id);
+            auto saved=snapshots.find(original.id);
+            auto old=std::find_if(table.cells.begin(),table.cells.end(),[&](const NativeCell& c){return c.id==original.id;});
+            const table::Cell* oldModel=old==table.cells.end()?nullptr:&table.model.cellById(original.id);
+            const NativeCell* migrated=nullptr;
+            if(deletion&&oldModel&&!oldModel->originals.empty()) {
+                const int begin=deletion->vertical?oldModel->column:oldModel->row;
+                if(begin>=deletion->first&&begin<deletion->first+deletion->count) {
+                    const int row=original.row+(!deletion->vertical?deletion->count:0);
+                    const int column=original.column+(deletion->vertical?deletion->count:0);
+                    for(const auto& prior:oldModel->originals) if(prior.row==row&&prior.column==column)
+                        for(const auto& snapshot:table.snapshots) if(snapshot.id==prior.id) migrated=&snapshot;
+                }
+            }
+            if(migrated&&saved!=snapshots.end()) {
+                ensureArchive();NativeCell source{original.id,migrated->fill,saved->second.text};
+                auto replacement=duplicateCell(source,original.id,next.archive,true);
+                const auto anchorText=textContent(saved->second.text),otherText=textContent(migrated->text);
+                if(anchorText.empty()) formattedText(replacement.text,{migrated->text});
+                else if(!otherText.empty()) formattedText(replacement.text,{saved->second.text,migrated->text});
+                if(textContent(replacement.text)!=original.text) throw table::ValidationError("Migrated native format snapshot does not match saved text");
+                snapshots[original.id]=replacement;continue;
+            }
+            if(saved!=snapshots.end()&&textContent(saved->second.text)==original.text) continue;
+            if(old!=table.cells.end()&&textContent(old->text)==original.text) {
+                ensureArchive();auto source=*old;
+                // Editing a merged cell updates its saved text, while its original fill remains restorable.
+                if(saved!=snapshots.end()) source.fill=saved->second.fill;
+                snapshots[original.id]=duplicateCell(source,original.id,next.archive,true);
+            } else if(saved!=snapshots.end()) {
+                throw table::ValidationError("Native format snapshot does not match saved text");
+            }
+        }
+        next.snapshots.clear();
+        for(const auto& saved:snapshots) if(needed.count(saved.first)) next.snapshots.push_back(saved.second);
         traceStage("structure.cells.start");
         for(const auto& cell:model.cells()) {
             auto existing=std::find_if(table.cells.begin(),table.cells.end(),[&](const NativeCell& value){return value.id==cell.id;});
-            if(existing==table.cells.end()) next.cells.push_back(createCell(next,cell));
+            auto saved=snapshots.find(cell.id);
+            const auto* old=existing==table.cells.end()?nullptr:&table.model.cellById(cell.id);
+            if(old&&!cell.originals.empty()&&cell.text!=old->text&&cell.text==cell.mergedText) {
+                auto merged=duplicateCell(*existing,cell.id,next.group,false);
+                std::vector<const table::Cell*> members;
+                for(const auto& prior:table.model.cells())
+                    if(std::any_of(cell.originals.begin(),cell.originals.end(),[&](const table::OriginalCell& original){return original.id==prior.id;})) members.push_back(&prior);
+                std::sort(members.begin(),members.end(),[](const table::Cell* a,const table::Cell* b){return a->row==b->row?a->column<b->column:a->row<b->row;});
+                std::vector<AIArtHandle> sources;
+                for(const auto* member:members) for(const auto& native:table.cells) if(native.id==member->id) sources.push_back(native.text);
+                formattedText(merged.text,sources);next.cells.push_back(merged);
+            } else if(saved!=snapshots.end()&&(existing==table.cells.end()||(old&&!old->originals.empty()&&cell.originals.empty()))) {
+                if(textContent(saved->second.text)==cell.text) next.cells.push_back(duplicateCell(saved->second,cell.id,next.group,false));
+                else if(existing!=table.cells.end()&&textContent(existing->text)==cell.text) {
+                    NativeCell source{cell.id,saved->second.fill,existing->text};next.cells.push_back(duplicateCell(source,cell.id,next.group,false));
+                } else throw table::ValidationError("Restored native format snapshot does not match cell text");
+            } else if(existing==table.cells.end()) next.cells.push_back(createCell(next,cell));
+            else if(cell.text==old->text) next.cells.push_back(*existing);
             else {
-                next.cells.push_back(*existing);
-                if(cell.text!=table.model.cellById(cell.id).text) setText(existing->text,cell.text);
+                // Legacy test documents have no native archive; retain their saved plain text and cell defaults.
+                if(table.archive) throw table::ValidationError("Missing native format snapshot");
+                next.cells.push_back(createCell(next,cell));
             }
+            if(textContent(next.cells.back().text)!=cell.text) throw table::ValidationError("Native formatted copy changed cell content");
         }
         for(const auto& cell:table.cells) {
-            if(std::none_of(model.cells().begin(),model.cells().end(),[&](const table::Cell& value){return value.id==cell.id;})) {
-                checked(art->DisposeArt(cell.fill));checked(art->DisposeArt(cell.text));
-            }
+            if(std::none_of(next.cells.begin(),next.cells.end(),[&](const NativeCell& value){return value.fill==cell.fill;})) checked(art->DisposeArt(cell.fill));
+            if(std::none_of(next.cells.begin(),next.cells.end(),[&](const NativeCell& value){return value.text==cell.text;})) checked(art->DisposeArt(cell.text));
         }
+        for(const auto& saved:table.snapshots) {
+            if(std::none_of(next.snapshots.begin(),next.snapshots.end(),[&](const NativeCell& value){return value.fill==saved.fill;})) checked(art->DisposeArt(saved.fill));
+            if(std::none_of(next.snapshots.begin(),next.snapshots.end(),[&](const NativeCell& value){return value.text==saved.text;})) checked(art->DisposeArt(saved.text));
+        }
+        if(next.archive&&next.snapshots.empty()) {checked(art->DisposeArt(next.archive));next.archive=nullptr;}
         for(auto path:table.edges) checked(art->DisposeArt(path));
         traceStage("structure.oldEdges.removed");
         for(const auto& edge:table::Geometry::visibleEdges(model)) {
@@ -296,6 +426,8 @@ void DocumentAdapter::detach(const NativeTable& table) {
     if(!valid(table)) throw static_cast<ASErr>(kBadParameterErr);
     DictionaryLease dict{dictionaries};checked(art->GetDictionary(table.group,&dict.value));
     checked(dictionaries->DeleteEntry(dict.value,dictionaries->Key(modelKey)));
+    if(dictionaries->IsKnown(dict.value,dictionaries->Key(snapshotKey))) checked(dictionaries->DeleteEntry(dict.value,dictionaries->Key(snapshotKey)));
+    if(table.archive) checked(art->DisposeArt(table.archive));
     std::vector<AIArtHandle> objects{table.frame};for(const auto& c:table.cells){objects.push_back(c.fill);objects.push_back(c.text);}objects.insert(objects.end(),table.edges.begin(),table.edges.end());
     for(auto object:objects){DictionaryLease item{dictionaries};checked(art->GetDictionary(object,&item.value));checked(dictionaries->DeleteEntry(item.value,dictionaries->Key(roleKey)));}
     auto label=ai::UnicodeString::FromUTF8("转换为普通对象");checked(undo->SetUndoTextUS(label,label));
