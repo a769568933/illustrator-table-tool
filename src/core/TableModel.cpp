@@ -5,6 +5,35 @@
 #include <limits>
 
 namespace table {
+void validateStyle(const CellStyle& style) {
+    for(const auto color:{style.fill,style.border,style.text})
+        for(double value:{color.red,color.green,color.blue})
+            if(!std::isfinite(value)||value<0||value>1) throw ValidationError("Invalid color");
+    if(!std::isfinite(style.fontSize)||style.fontSize<1||style.fontSize>1000||
+        !std::isfinite(style.borderWidth)||style.borderWidth<0||style.borderWidth>100||
+        !std::isfinite(style.padding)||style.padding<0||style.padding>mm(100)||
+        style.alignment<0||style.alignment>2||style.font.size()>256)
+        throw ValidationError("Invalid cell style");
+}
+void TableModel::setStyle(CellRange range,const CellStyle& value) {
+    validateStyle(value);
+    if(range.firstRow>range.lastRow) std::swap(range.firstRow,range.lastRow);
+    if(range.firstColumn>range.lastColumn) std::swap(range.firstColumn,range.lastColumn);
+    cellAt(range.firstRow,range.firstColumn);cellAt(range.lastRow,range.lastColumn);
+    auto next=*this;auto style=value;style.revision=0;
+    for(const auto& cell:anchors) style.revision=std::max(style.revision,cell.style.revision);
+    if(style.revision==std::numeric_limits<std::uint64_t>::max()) throw ValidationError("Style revision limit");
+    ++style.revision;
+    for(auto& cell:next.anchors) {
+        if(cell.row>range.lastRow||cell.column>range.lastColumn||
+            cell.row+cell.rowSpan<=range.firstRow||cell.column+cell.columnSpan<=range.firstColumn) continue;
+        if(cell.row<range.firstRow||cell.column<range.firstColumn||
+            cell.row+cell.rowSpan-1>range.lastRow||cell.column+cell.columnSpan-1>range.lastColumn)
+            throw ValidationError("Style range cannot cut a merged cell");
+        cell.style=style;
+    }
+    *this=std::move(next);
+}
 TableModel TableModel::create(int rows, int columns, double widthPt, double heightPt) {
     if (rows < 1 || rows > 100 || columns < 1 || columns > 50 || rows * columns > 2000)
         throw ValidationError("Table must have 1-100 rows, 1-50 columns and at most 2000 cells");
@@ -76,7 +105,7 @@ void TableModel::merge(CellRange range) {
     bool first=true;
     for(const auto& cell : included) {
         if(!first) merged.text+=u'\n'; merged.text+=cell.text; first=false;
-        if(cell.originals.empty()) merged.originals.push_back({cell.id,cell.row,cell.column,cell.text});
+        if(cell.originals.empty()) merged.originals.push_back({cell.id,cell.row,cell.column,cell.text,cell.style});
         else {
             auto saved=cell.originals;
             if(cell.text!=cell.mergedText) for(auto& original : saved)
@@ -99,6 +128,7 @@ void TableModel::split(CellId id) {
     next.anchors.erase(std::remove_if(next.anchors.begin(),next.anchors.end(),[=](const Cell& c){return c.id==id;}),next.anchors.end());
     for(const auto& original : cell.originals) {
         Cell restored{original.id,original.row,original.column,1,1,original.text};
+        restored.style=original.style;
         if(original.row==cell.row && original.column==cell.column && cell.text!=cell.mergedText) restored.text=cell.text;
         next.anchors.push_back(std::move(restored));
     }

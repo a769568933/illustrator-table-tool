@@ -8,6 +8,10 @@
 #include "AIUndo.h"
 #include "AIDictionary.h"
 #include "AILayer.h"
+#include "AIFont.h"
+#include "AIATEPaint.h"
+#include "AIColorConversion.h"
+#include "Dialogs.hpp"
 #include "ATESuites.h"
 #include "table/Geometry.hpp"
 
@@ -33,6 +37,12 @@ class DocumentAdapter {
     ATE::StorySuite* stories;
     AIDictionarySuite* dictionaries;
     AILayerSuite* layers;
+    AIFontSuite* fonts;
+    AIATEPaintSuite* atePaint;
+    AIColorConversionSuite* conversion;
+    ATE::FontSuite* ateFonts;
+    ATE::ApplicationPaintSuite* paints;
+    ATE::ParaFeaturesSuite* paragraphs;
     AIRealPoint world(const NativeTable& table, table::Point point) const;
     void rectangle(AIArtHandle path,const NativeTable& table,table::Rect bounds);
     void line(AIArtHandle path,const NativeTable& table,const table::Edge& edge);
@@ -44,6 +54,10 @@ class DocumentAdapter {
     NativeTable readTable(AIArtHandle group);
     void setText(AIArtHandle frame,const std::u16string& value);
     NativeCell createCell(const NativeTable& table,const table::Cell& cell);
+    AIColor color(const table::Color& value);
+    void styleCell(const NativeCell& native,const table::CellStyle& style);
+    void styleEdges(const NativeTable& native,const table::TableModel& model);
+    ATE::FontRef resolveFont(const std::u16string& name);
 public:
     explicit DocumentAdapter(Suites& suites);
     NativeTable createTable(const table::TableModel& model,AIRealPoint origin);
@@ -53,5 +67,7 @@ public:
     std::vector<NativeTable> discoverTables();
     void synchronize(NativeTable& table);
     void applyStructure(NativeTable& table,const table::TableModel& model);
+    std::vector<FontChoice> installedFonts();
+    void applyStyle(NativeTable& table,table::CellRange range,const table::CellStyle& style);
     void detach(const NativeTable& table);
 };

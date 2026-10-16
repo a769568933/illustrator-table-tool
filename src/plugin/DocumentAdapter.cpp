@@ -1,3 +1,4 @@
+#include <windows.h>
 #include "DocumentAdapter.hpp"
 #include <algorithm>
 #include <cmath>
@@ -10,6 +11,10 @@ struct RangeLease {
     ATE::TextRangeRef value=nullptr;
     ~RangeLease(){ if(value) suite->Release(value); }
 };
+template<class Suite,class Ref> struct AteLease {
+    Suite* suite;Ref value=nullptr;
+    ~AteLease(){if(value) suite->Release(value);}
+};
 struct DictionaryLease {
     AIDictionarySuite* suite;
     AIDictionaryRef value=nullptr;
@@ -17,8 +22,8 @@ struct DictionaryLease {
 };
 constexpr const char* modelKey="IllustratorTableTool.Model.v1";
 constexpr const char* roleKey="IllustratorTableTool.Role.v1";
-table::Rect textBounds(table::Rect bounds) {
-    const auto padding=std::min({table::mm(1),(bounds.right-bounds.left)/4,(bounds.bottom-bounds.top)/4});
+table::Rect textBounds(table::Rect bounds,double requested) {
+    const auto padding=std::min({requested,(bounds.right-bounds.left)/4,(bounds.bottom-bounds.top)/4});
     bounds.left+=padding; bounds.top+=padding; bounds.right-=padding; bounds.bottom-=padding;
     return bounds;
 }
@@ -34,7 +39,13 @@ DocumentAdapter::DocumentAdapter(Suites& suites) :
  features(suites.get<ATE::CharFeaturesSuite>(kCharFeaturesSuite,kCharFeaturesSuiteVersion)),
  stories(suites.get<ATE::StorySuite>(kStorySuite,kStorySuiteVersion)),
  dictionaries(suites.get<AIDictionarySuite>(kAIDictionarySuite,kAIDictionaryVersion)),
- layers(suites.get<AILayerSuite>(kAILayerSuite,kAILayerVersion)) {}
+ layers(suites.get<AILayerSuite>(kAILayerSuite,kAILayerVersion)),
+ fonts(suites.get<AIFontSuite>(kAIFontSuite,kAIFontVersion)),
+ atePaint(suites.get<AIATEPaintSuite>(kAIATEPaintSuite,kAIATEPaintVersion)),
+ conversion(suites.get<AIColorConversionSuite>(kAIColorConversionSuite,kAIColorConversionVersion)),
+ ateFonts(suites.get<ATE::FontSuite>(kFontSuite,kFontSuiteVersion)),
+ paints(suites.get<ATE::ApplicationPaintSuite>(kApplicationPaintSuite,kApplicationPaintSuiteVersion)),
+ paragraphs(suites.get<ATE::ParaFeaturesSuite>(kParaFeaturesSuite,kParaFeaturesSuiteVersion)) {}
 AIRealPoint DocumentAdapter::world(const NativeTable& table,table::Point point) const {
     return {static_cast<AIReal>(table.origin.h+point.x),static_cast<AIReal>(table.origin.v-point.y)};
 }
@@ -117,7 +128,7 @@ void DocumentAdapter::applyGeometry(NativeTable& table,const table::TableModel& 
         rectangle(table.frame,table,{0,0,model.width(),model.height()});
         for(const auto& cell : table.cells) {
             auto bounds=table::Geometry::cellBounds(model,cell.id); rectangle(cell.fill,table,bounds);
-            AIArtHandle container=nullptr; checked(text->GetPathObject(cell.text,&container)); rectangle(container,table,textBounds(bounds));
+            AIArtHandle container=nullptr; checked(text->GetPathObject(cell.text,&container)); rectangle(container,table,textBounds(bounds,model.cellById(cell.id).style.padding));
         }
         for(std::size_t i=0;i<edges.size();++i) line(table.edges[i],table,edges[i]);
         auto label=ai::UnicodeString::FromUTF8("调整表格尺寸"); checked(undo->SetUndoTextUS(label,label));
@@ -151,14 +162,10 @@ NativeCell DocumentAdapter::createCell(const NativeTable& table,const table::Cel
     NativeCell native{cell.id,newPath(table.group),nullptr};
     auto bounds=table::Geometry::cellBounds(table.model,cell.id);
     rectangle(native.fill,table,bounds);setPaint(native.fill,true,false,1);
-    auto container=newPath(table.group);rectangle(container,table,textBounds(bounds));setPaint(container,false,false,0);
+    auto container=newPath(table.group);rectangle(container,table,textBounds(bounds,cell.style.padding));setPaint(container,false,false,0);
     checked(text->NewInPathText(kPlaceInsideOnTop,table.group,kHorizontalTextOrientation,container,nullptr,false,&native.text));
     setText(native.text,cell.text);
-    RangeLease range{ranges};checked(text->GetATETextRange(native.text,&range.value));
-    ATE::CharFeaturesRef chars=nullptr;checked(ranges->GetUniqueCharFeatures(range.value,&chars));
-    auto error=features->SetFontSize(chars,12);
-    if(!error) error=ranges->ReplaceOrAddLocalCharFeatures(range.value,chars);
-    features->Release(chars);checked(error);
+    styleCell(native,cell.style);
     role(native.fill,"fill:"+std::to_string(cell.id));role(native.text,"text:"+std::to_string(cell.id));
     return native;
 }
@@ -257,6 +264,7 @@ void DocumentAdapter::applyStructure(NativeTable& table,const table::TableModel&
             role(path,"edge:"+std::to_string(next.edges.size()));next.edges.push_back(path);
         }
         applyGeometry(next,model);
+        styleEdges(next,model);
         auto label=ai::UnicodeString::FromUTF8("修改表格结构");checked(undo->SetUndoTextUS(label,label));table=std::move(next);
     } catch(...) {undo->UndoChanges();throw;}
 }
@@ -279,4 +287,96 @@ void DocumentAdapter::beginEdit(const NativeTable& table,table::CellId id) {
     checked(ranges->Select(range.value,false));
     AIBoolean focused=false; checked(document->HasTextFocus(&focused));
     if(!focused) throw static_cast<ASErr>(kCantHappenErr);
+}
+AIColor DocumentAdapter::color(const table::Color& value) {
+    ai::int16 mode=kDocUnknownColor;checked(document->GetDocumentColorModel(&mode));
+    AIColor result;result.Init();
+    if(mode==kDocRGBColor) {
+        result.kind=kThreeColor;result.c.rgb.red=value.red;result.c.rgb.green=value.green;result.c.rgb.blue=value.blue;
+    } else {
+        result.kind=kFourColor;
+        if(value.red==value.green&&value.green==value.blue) {
+            result.c.f.cyan=result.c.f.magenta=result.c.f.yellow=0;result.c.f.black=1-value.red;
+        } else {
+            AIFloatSampleComponent rgb[3]={static_cast<AIFloatSampleComponent>(value.red),static_cast<AIFloatSampleComponent>(value.green),static_cast<AIFloatSampleComponent>(value.blue)},cmyk[4]{};
+            AIColorConvertOptions options;AIBoolean inGamut=false;
+            checked(conversion->ConvertSampleColor(kAIRGBColorSpace,rgb,kAICMYKColorSpace,cmyk,options,&inGamut));
+            result.c.f.cyan=cmyk[0];result.c.f.magenta=cmyk[1];result.c.f.yellow=cmyk[2];result.c.f.black=cmyk[3];
+        }
+    }
+    return result;
+}
+std::vector<FontChoice> DocumentAdapter::installedFonts() {
+    ai::int32 count=0;checked(fonts->CountFonts(&count));std::vector<FontChoice> result;
+    for(ai::int32 i=0;i<count;++i) {
+        AIFontKey key=0;checked(fonts->IndexFontList(i,&key));AIBoolean substituted=false;
+        checked(fonts->GetFontIsSubstituted(key,substituted));if(substituted) continue;
+        char name[512]{};ASUnicode label[512]{};
+        checked(fonts->GetPostScriptFontName(key,name,512));checked(fonts->GetUserFontUINameUnicode(key,label,512));
+        FontChoice choice;
+        for(auto p=name;*p;++p) choice.name+=static_cast<unsigned char>(*p);
+        for(auto p=label;*p;++p) choice.label+=static_cast<char16_t>(*p);
+        if(choice.label.empty()) choice.label=choice.name;result.push_back(std::move(choice));
+    }
+    std::sort(result.begin(),result.end(),[](const FontChoice& a,const FontChoice& b){return a.label<b.label;});return result;
+}
+ATE::FontRef DocumentAdapter::resolveFont(const std::u16string& name) {
+    if(name.empty()) return nullptr;
+    ai::int32 count=0;checked(fonts->CountFonts(&count));
+    for(ai::int32 i=0;i<count;++i) {
+        AIFontKey key=0;checked(fonts->IndexFontList(i,&key));char candidate[512]{};
+        checked(fonts->GetPostScriptFontName(key,candidate,512));std::u16string value;
+        for(auto p=candidate;*p;++p) value+=static_cast<unsigned char>(*p);
+        if(value!=name) continue;
+        AIBoolean substituted=false;checked(fonts->GetFontIsSubstituted(key,substituted));if(substituted) break;
+        ATE::FontRef result=nullptr;checked(fonts->FontFromFontKey(key,&result));return result;
+    }
+    MessageBoxW(nullptr,L"表格使用的字体当前不可用。请安装原字体，或在“单元格样式”中选择已安装的字体后重试。",L"字体不可用",MB_OK|MB_ICONINFORMATION);
+    throw table::ValidationError("Font is unavailable");
+}
+void DocumentAdapter::styleCell(const NativeCell& native,const table::CellStyle& style) {
+    AteLease<ATE::FontSuite,ATE::FontRef> font{ateFonts,resolveFont(style.font)};
+    RangeLease range{ranges};checked(text->GetATETextRange(native.text,&range.value));
+    AteLease<ATE::CharFeaturesSuite,ATE::CharFeaturesRef> chars{features};checked(ranges->GetUniqueCharFeatures(range.value,&chars.value));
+    checked(features->SetFontSize(chars.value,style.fontSize));
+    if(font.value) checked(features->SetFont(chars.value,font.value));
+    auto ink=color(style.text);AteLease<ATE::ApplicationPaintSuite,ATE::ApplicationPaintRef> paint{paints};
+    checked(atePaint->CreateATEApplicationPaint(&ink,&paint.value));checked(features->SetFillColor(chars.value,paint.value));
+    checked(features->SetFill(chars.value,true));checked(features->SetStroke(chars.value,false));
+    checked(ranges->ReplaceOrAddLocalCharFeatures(range.value,chars.value));
+    AteLease<ATE::ParaFeaturesSuite,ATE::ParaFeaturesRef> para{paragraphs};checked(ranges->GetUniqueParaFeatures(range.value,&para.value));
+    const ATE::ParagraphJustification align[]={ATE::kLeftJustify,ATE::kCenterJustify,ATE::kRightJustify};
+    checked(paragraphs->SetJustification(para.value,align[style.alignment]));checked(ranges->ReplaceOrAddLocalParaFeatures(range.value,para.value));
+    AIPathStyle fill;fill.Init();fill.fillPaint=true;fill.strokePaint=false;fill.fill.color=color(style.fill);
+    checked(styles->SetPathStyle(native.fill,&fill));
+}
+void DocumentAdapter::styleEdges(const NativeTable& native,const table::TableModel& model) {
+    const auto edges=table::Geometry::visibleEdges(model);
+    for(std::size_t i=0;i<edges.size();++i) {
+        const auto& edge=edges[i];const table::Cell* chosen=nullptr;
+        auto choose=[&](int row,int column) {
+            if(row<0||row>=model.rows()||column<0||column>=model.columns()) return;
+            const auto& cell=model.cellAt(row,column);
+            if(!chosen||cell.style.revision>chosen->style.revision) chosen=&cell;
+        };
+        if(edge.vertical) {choose(edge.segment,edge.track-1);choose(edge.segment,edge.track);}
+        else {choose(edge.track-1,edge.segment);choose(edge.track,edge.segment);}
+        if(!chosen) throw table::ValidationError("Missing border owner");
+        AIPathStyle paint;paint.Init();paint.fillPaint=false;paint.strokePaint=chosen->style.borderWidth>0;
+        paint.stroke.width=chosen->style.borderWidth;paint.stroke.miterLimit=4;paint.stroke.color=color(chosen->style.border);
+        checked(styles->SetPathStyle(native.edges[i],&paint));
+    }
+}
+void DocumentAdapter::applyStyle(NativeTable& native,table::CellRange range,const table::CellStyle& style) {
+    if(!valid(native)) throw table::ValidationError("Table is not editable");
+    AteLease<ATE::FontSuite,ATE::FontRef> font{ateFonts,resolveFont(style.font)};
+    auto model=native.model;model.setStyle(range,style);
+    try {
+        for(const auto& cell:native.cells) {
+            const auto& value=model.cellById(cell.id);
+            if(value.style.revision!=native.model.cellById(cell.id).style.revision) styleCell(cell,value.style);
+        }
+        styleEdges(native,model);applyGeometry(native,model);
+        auto label=ai::UnicodeString::FromUTF8("修改单元格样式");checked(undo->SetUndoTextUS(label,label));
+    } catch(...) {undo->UndoChanges();throw;}
 }

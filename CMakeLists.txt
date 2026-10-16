@@ -47,7 +47,7 @@ if(TABLE_BUILD_PLUGIN)
   target_compile_definitions(IllustratorTableTool PRIVATE WIN_ENV _WINDOWS NOMINMAX WIN32_LEAN_AND_MEAN)
   target_compile_options(IllustratorTableTool PRIVATE /utf-8 /Zp8 /Zc:wchar_t- /Zc:sizedDealloc- /EHsc)
   set_property(TARGET IllustratorTableTool PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-  target_link_libraries(IllustratorTableTool PRIVATE user32 table_core)
+  target_link_libraries(IllustratorTableTool PRIVATE user32 comdlg32 table_core)
   set_target_properties(IllustratorTableTool PROPERTIES PREFIX "" SUFFIX ".aip"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugin")
 endif()

@@ -183,8 +183,25 @@ void persistence() {
     rejects([&]{scaled.scale(0,1);});rejects([&]{scaled.scale(0.001,1);});
     expect(close(scaled.width(),200),"invalid scale is atomic");
 }
+void styling() {
+    using namespace table;
+    auto model=TableModel::create(2,2,100,60);
+    CellStyle style;style.fill={0.2,0.4,0.6};style.fontSize=18;style.padding=mm(2);
+    style.font=u"AdobeSongStd-Light";style.alignment=1;style.borderWidth=1.5;
+    model.setStyle({0,0,0,1},style);
+    expect(model.cellAt(0,1).style.fontSize==18 && model.cellAt(1,0).style.fontSize==12,"style applies only to selected cells");
+    const auto saved=serialize(model);
+    auto copy=deserialize(saved);copy.merge({0,0,1,1});copy.split(copy.cellAt(0,0).id);
+    expect(copy.cellAt(0,1).style.font==style.font && copy.cellAt(1,1).style.fontSize==12,"styles survive save and merge split");
+    style.fill.red=2;rejects([&]{model.setStyle({0,0,1,1},style);});
+    expect(serialize(model)==saved,"invalid style leaves model unchanged");
+    style.fill.red=0;style.fontSize=std::numeric_limits<double>::infinity();
+    rejects([&]{model.setStyle({0,0,0,0},style);});
+    auto legacy=deserialize("ITT1\n1 1 2\n20\n20\n1\n1 0 0 1 1\n0\n\n0\n\n0\n");
+    expect(legacy.cellAt(0,0).style.fontSize==12,"legacy documents use default styles");
+}
 }
 int main() {
-    try { creation(); geometry(); interaction(); merging(); structure(); persistence(); std::cout << checks << " checks passed\n"; return 0; }
+    try { creation(); geometry(); interaction(); merging(); structure(); persistence(); styling(); std::cout << checks << " checks passed\n"; return 0; }
     catch (const std::exception& error) { std::cerr << "FAIL after " << checks << " checks: " << error.what() << '\n'; return 1; }
 }

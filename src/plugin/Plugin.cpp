@@ -24,7 +24,7 @@ namespace {
 bool is(const char* value,const char* expected){ return std::strcmp(value,expected)==0; }
 struct State {
     AIMenuItemHandle parent=nullptr, about=nullptr, create=nullptr, edit=nullptr;
-    std::array<AIMenuItemHandle,9> commands{};
+    std::array<AIMenuItemHandle,10> commands{};
     AIToolHandle tool=nullptr;
     AIAnnotatorHandle annotator=nullptr;
     bool placing=false, selectedTool=false;
@@ -54,7 +54,7 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
     add("IllustratorTableTool.About","关于画布表格…",&state.about);
     add("IllustratorTableTool.Create","新建表格…",&state.create);
     add("IllustratorTableTool.Edit","选择和调整单元格",&state.edit);
-    const char* names[]={"合并单元格","拆分单元格","在上方插入行","在下方插入行","在左侧插入列","在右侧插入列","删除所选行","删除所选列","转换为普通对象"};
+    const char* names[]={"合并单元格","拆分单元格","在上方插入行","在下方插入行","在左侧插入列","在右侧插入列","删除所选行","删除所选列","转换为普通对象","单元格样式…"};
     for(std::size_t i=0;i<state.commands.size();++i) {
         auto key="IllustratorTableTool.Command"+std::to_string(i);add(key.c_str(),names[i],&state.commands[i]);
     }
@@ -196,6 +196,13 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
                 DocumentAdapter adapter(suites);auto& table=state->tables[*state->active];adapter.synchronize(table);
                 auto selection=*state->interaction.selection();auto model=table.model;
                 const auto index=static_cast<int>(command-state->commands.begin());
+                if(index==9) {
+                    auto initial=model.cellAt(selection.firstRow,selection.firstColumn).style;
+                    auto fonts=adapter.installedFonts();auto style=showCellStyleDialog(initial,fonts);if(!style) return kNoErr;
+                    checked(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)->LoseTextFocus());
+                    checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
+                    adapter.applyStyle(table,selection,*style);invalidate(suites);return kNoErr;
+                }
                 if(index==0) model.merge(selection);
                 else if(index==1) {
                     std::vector<table::CellId> cells;
