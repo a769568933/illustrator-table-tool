@@ -43,12 +43,12 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
         item.itemText=ai::UnicodeString::FromUTF8(title);
         checked(menus->AddMenuItem(data->self,key,&item,0,handle));
     };
-    add("IllustratorTableTool.About","���񹤾ߣ����ڡ�",&state.about);
-    add("IllustratorTableTool.Create","���񹤾ߣ��½� 2��2 ���Ա���",&state.create);
-    add("IllustratorTableTool.Edit","���񹤾ߣ�ѡ��͵�����Ԫ��",&state.edit);
+    add("IllustratorTableTool.About","表格工具：关于…",&state.about);
+    add("IllustratorTableTool.Create","表格工具：新建 2×2 测试表格…",&state.create);
+    add("IllustratorTableTool.Edit","表格工具：选择和调整单元格",&state.edit);
     AIAddToolData tool;
-    tool.title=ai::UnicodeString::FromUTF8("�������񹤾�");
-    tool.tooltip=ai::UnicodeString::FromUTF8("����ѡ��Shift ��ѡ���϶����ߣ�˫���༭����");
+    tool.title=ai::UnicodeString::FromUTF8("画布表格工具");
+    tool.tooltip=ai::UnicodeString::FromUTF8("单击选格；Shift 多选；拖动边线；双击编辑文字");
     tool.sameGroupAs=kNoTool; tool.sameToolsetAs=kNoTool;
     tool.normalIconResID=tool.darkIconResID=16001; tool.iconType=ai::IconType::kSVG;
     checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->AddTool(data->self,"IllustratorTableTool.Tool",tool,kToolWantsToTrackCursorOption,&state.tool));
@@ -73,7 +73,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
     if(is(selector,kSelectorAIToolMouseDown)) {
         if(state.placing) {
             auto model=table::TableModel::create(2,2,table::mm(80),table::mm(32));
-            for(const auto& cell : model.cells()) model.setText(cell.id,u"˫���༭����");
+            for(const auto& cell : model.cells()) model.setText(cell.id,u"双击编辑文字");
             state.tables.push_back(adapter.createTable(model,message->cursor));
             state.active=state.tables.size()-1; state.interaction.clearSelection(); state.placing=false;
             invalidate(suites); return;
@@ -164,10 +164,10 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
         auto* state=static_cast<State*>(data->globals); if(!state) return kNoErr;
         if(is(caller,kCallerAIMenu)&&is(selector,kSelectorAIGoMenuItem)) {
             auto item=static_cast<AIMenuMessage*>(message)->menuItem;
-            if(item==state->about) MessageBoxW(nullptr,L"AI �������񹤾� �� ������֤��\n2��2 ����ѡ�����ߺ�ԭ�����ֽ�����ԡ�\n�����ؿ����ϲ���ּ���ʽ���ڿ�����",L"AI �������񹤾�",MB_OK|MB_ICONINFORMATION);
+            if(item==state->about) MessageBoxW(nullptr,L"AI 画布表格工具 · 交互验证版\n2×2 表格、选择、拖线和原生文字接入测试。\n保存重开、合并拆分及样式仍在开发。",L"AI 画布表格工具",MB_OK|MB_ICONINFORMATION);
             else if(item==state->create||item==state->edit) {
                 AIDocumentHandle document=nullptr; checked(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)->GetDocument(&document));
-                if(!document) {MessageBoxW(nullptr,L"�����½���� Illustrator �ĵ���",L"��������",MB_OK);return kNoErr;}
+                if(!document) {MessageBoxW(nullptr,L"请先新建或打开 Illustrator 文档。",L"画布表格",MB_OK);return kNoErr;}
                 checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
                 state->placing=item==state->create;
             }
