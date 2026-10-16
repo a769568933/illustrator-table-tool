@@ -34,12 +34,14 @@ void runHostAcceptance(Suites& suites,bool interactive,AIDocumentHandle* created
     auto text=suites.get<AITextFrameSuite>(kAITextFrameSuite,kAITextFrameVersion);
     auto ranges=suites.get<ATE::TextRangeSuite>(kTextRangeSuite,kTextRangeSuiteVersion);
     auto chars=suites.get<ATE::CharFeaturesSuite>(kCharFeaturesSuite,kCharFeaturesSuiteVersion);
+    auto paragraphs=suites.get<ATE::ParaFeaturesSuite>(kParaFeaturesSuite,kParaFeaturesSuiteVersion);
     auto art=suites.get<AIArtSuite>(kAIArtSuite,kAIArtVersion);
     auto document=suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion);
     DocumentAdapter adapter(suites);
     auto model=table::TableModel::create(2,2,table::mm(120),table::mm(60));
     const auto first=model.cellAt(0,0).id;
     model.setText(first,u"AAA BBB");model.setText(model.cellAt(0,1).id,u"中文 12");
+    table::CellStyle rightAligned;rightAligned.alignment=2;model.setStyle({0,1,0,1},rightAligned);
     auto native=adapter.createTable(model,{80,500});
     {
         Lease<ATE::TextRangeSuite,ATE::TextRangeRef> range{ranges};
@@ -50,14 +52,24 @@ void runHostAcceptance(Suites& suites,bool interactive,AIDocumentHandle* created
         checked(chars->SetFontSize(features.value,24));
         checked(ranges->ReplaceOrAddLocalCharFeatures(range.value,features.value));
     }
-    auto fontSize=[&](table::CellId id,int offset) {
-        auto found=std::find_if(native.cells.begin(),native.cells.end(),[&](const NativeCell& cell){return cell.id==id;});
-        require(found!=native.cells.end(),"Expected native cell is missing");
+    auto fontSizeIn=[&](const NativeTable& subject,table::CellId id,int offset) {
+        auto found=std::find_if(subject.cells.begin(),subject.cells.end(),[&](const NativeCell& cell){return cell.id==id;});
+        require(found!=subject.cells.end(),"Expected native cell is missing");
         Lease<ATE::TextRangeSuite,ATE::TextRangeRef> range{ranges};checked(text->GetATETextRange(found->text,&range.value));
         checked(ranges->SetRange(range.value,offset,offset+1));
         Lease<ATE::CharFeaturesSuite,ATE::CharFeaturesRef> features{chars};checked(ranges->GetUniqueCharFeatures(range.value,&features.value));
         ATE::ATEBool8 assigned=false;ATETextDOM::Float value=0;checked(chars->GetFontSize(features.value,&assigned,&value));
         require(assigned,"Test character font size is not assigned");return value;
+    };
+    auto fontSize=[&](table::CellId id,int offset){return fontSizeIn(native,id,offset);};
+    auto alignment=[&](table::CellId id,int offset) {
+        auto found=std::find_if(native.cells.begin(),native.cells.end(),[&](const NativeCell& cell){return cell.id==id;});
+        require(found!=native.cells.end(),"Expected paragraph cell is missing");
+        Lease<ATE::TextRangeSuite,ATE::TextRangeRef> range{ranges};checked(text->GetATETextRange(found->text,&range.value));
+        checked(ranges->SetRange(range.value,offset,offset+1));
+        Lease<ATE::ParaFeaturesSuite,ATE::ParaFeaturesRef> para{paragraphs};checked(ranges->GetUniqueParaFeatures(range.value,&para.value));
+        ATE::ATEBool8 assigned=false;ATE::ParagraphJustification value=ATE::kLeftJustify;
+        checked(paragraphs->GetJustification(para.value,&assigned,&value));require(assigned,"Test paragraph alignment is not assigned");return value;
     };
     require(std::abs(fontSize(first,0)-24)<0.01&&std::abs(fontSize(first,4)-12)<0.01,"Mixed-font test setup failed");
     traceStage("acceptance.mixedFont.setup.passed");
@@ -66,6 +78,7 @@ void runHostAcceptance(Suites& suites,bool interactive,AIDocumentHandle* created
     adapter.synchronize(native);
     require(native.model.cellById(first).text==u"AAA BBB\n中文 12","Merge changed cell content");
     require(std::abs(fontSize(first,0)-24)<0.01&&std::abs(fontSize(first,4)-12)<0.01,"Merge destroyed mixed character formatting");
+    require(alignment(first,0)==ATE::kLeftJustify&&alignment(first,8)==ATE::kRightJustify,"Merge destroyed paragraph formatting");
     traceStage("acceptance.merge.mixedFont.passed");
     struct FilePathScope {
         AIFilePathSuite* previous=sAIFilePath;
@@ -85,7 +98,15 @@ void runHostAcceptance(Suites& suites,bool interactive,AIDocumentHandle* created
     auto copiedTable=std::find_if(foundTables.begin(),foundTables.end(),[&](const NativeTable& value){return value.group==copied;});
     require(copiedTable!=foundTables.end(),"Copied group has no independent native references");
     adapter.applyStructure(*copiedTable,table::applyCommand(copiedTable->model,{0,0,0,1},table::Command::Split));
+    require(std::abs(fontSizeIn(*copiedTable,first,0)-24)<0.01&&std::abs(fontSizeIn(*copiedTable,first,4)-12)<0.01,"Copied table lost native format snapshots");
     adapter.synchronize(native);require(native.model.cells().size()==3,"Editing copy changed original table");
+    auto dictionaries=suites.get<AIDictionarySuite>(kAIDictionarySuite,kAIDictionaryVersion);
+    AIDictionaryRef damaged=nullptr;checked(art->GetDictionary(copied,&damaged));
+    const auto damageError=dictionaries->SetStringEntry(damaged,dictionaries->Key("IllustratorTableTool.Model.v1"),"deliberately-invalid-test-entry");
+    dictionaries->Release(damaged);checked(damageError);
+    std::vector<RejectedTable> rejected;auto healthy=adapter.discoverTables(&rejected);
+    require(healthy.size()==1&&healthy.front().group==native.group&&rejected.size()==1,"Damaged table prevented healthy native table discovery");
+    traceStage("acceptance.malformedTable.isolated.passed");
     auto staleCopy=*copiedTable;checked(art->DisposeArt(copied));bool refused=false;
     try{adapter.synchronize(staleCopy);}catch(...){refused=true;}
     require(refused,"Deleted native table was not refused");traceStage("acceptance.copy.deletedGuard.passed");
@@ -94,6 +115,7 @@ void runHostAcceptance(Suites& suites,bool interactive,AIDocumentHandle* created
     adapter.applyStructure(native,table::applyCommand(native.model,{0,0,0,1},table::Command::Split));
     adapter.synchronize(native);
     require(native.model.cells().size()==4&&native.model.cellAt(0,1).text==u"中文 12","Split did not restore original cells");
+    require(alignment(native.model.cellAt(0,1).id,0)==ATE::kRightJustify,"Split did not restore original paragraph alignment");
     require(std::abs(fontSize(first,0)-24)<0.01&&std::abs(fontSize(first,4)-12)<0.01,"Split destroyed mixed character formatting");
     AIPathStyle restoredPaint;restoredPaint.Init();AIBoolean advanced=false;
     auto firstNative=std::find_if(native.cells.begin(),native.cells.end(),[&](const NativeCell& cell){return cell.id==first;});
@@ -111,6 +133,12 @@ void runHostAcceptance(Suites& suites,bool interactive,AIDocumentHandle* created
     }
     require(native.model.rows()==2&&native.model.columns()==2,"Row and column round trip changed dimensions");
     traceStage("acceptance.tracks.passed");
+    for(const auto flag:{kArtLocked,kArtHidden}) {
+        checked(art->SetArtUserAttr(native.group,flag,flag));refused=false;
+        try{adapter.synchronize(native);}catch(...){refused=true;}
+        checked(art->SetArtUserAttr(native.group,flag,0));require(refused,"Locked or hidden native table was not refused");
+    }
+    traceStage("acceptance.lockedHiddenGuard.passed");
     auto staleDocument=native;checked(document->SetDocumentModified(false));checked(documents->Close(created));
     if(createdDocument) *createdDocument=nullptr;
     refused=false;try{adapter.synchronize(staleDocument);}catch(...){refused=true;}
