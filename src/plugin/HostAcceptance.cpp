@@ -4,6 +4,7 @@
 #include "AIDocumentList.h"
 #include "AIFilePath.h"
 #include "AIFileFormat.h"
+#include "AINativeAction.h"
 #include "table/Commands.hpp"
 #include "Trace.hpp"
 #include <cmath>
@@ -88,10 +89,9 @@ void runHostAcceptance(Suites& suites,bool interactive,AIDocumentHandle* created
     wchar_t temporary[MAX_PATH]{};require(GetTempPathW(MAX_PATH,temporary)>0,"Cannot locate test artifact directory");
     const auto savedPath=std::wstring(temporary)+L"IllustratorTableTool-Acceptance-"+std::to_wstring(GetTickCount64())+L".ai";
     ai::FilePath saved(ai::UnicodeString(reinterpret_cast<const ASUnicode*>(savedPath.c_str())));
-    AIFileFormatHandle format=nullptr;checked(document->GetDocumentFileFormat(&format));const char* writer=nullptr;
-    checked(suites.get<AIFileFormatSuite>(kAIFileFormatSuite,kAIFileFormatVersion)->GetFileFormatName(format,&writer));
     traceStage("acceptance.save.start");
-    checked(document->WriteDocumentWithOptions(saved,writer,kFileFormatWrite|kFileFormatSuppressUI,nullptr,false,nullptr));
+    // A fresh, unsaved document has no assigned file-format handle. Select the native writer explicitly.
+    checked(document->WriteDocumentWithOptions(saved,kAINativeFileFormat,kFileFormatWrite|kFileFormatSuppressUI,nullptr,false,nullptr));
     traceStage("acceptance.save.passed");
     AIArtHandle copied=nullptr;checked(art->DuplicateArt(native.group,kPlaceAboveAll,nullptr,&copied));
     auto foundTables=adapter.discoverTables();require(foundTables.size()==2,"Copied table was not discovered independently");
