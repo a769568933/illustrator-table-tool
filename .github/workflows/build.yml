@@ -16,6 +16,12 @@ jobs:
           python-version: '3.12'
       - name: Verify PiPL resource encoder
         run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Configure host-independent core
+        run: cmake -S . -B build/core -A x64 -T v142 -DTABLE_BUILD_PLUGIN=OFF
+      - name: Compile core tests
+        run: cmake --build build/core --config Release --parallel 2
+      - name: Test table model and geometry
+        run: ctest --test-dir build/core -C Release --output-on-failure
   native:
     needs: build-tools-tests
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/native-table')
