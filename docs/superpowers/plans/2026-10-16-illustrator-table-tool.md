@@ -1,6 +1,6 @@
 # Illustrator Table Tool Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 本计划推荐在当前对话直接实施；尚待用户审阅并选择执行方式。
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 用户已确认在当前对话直接实施，官方 SDK 已取得。
 
 **Goal:** 为 Windows x64 Illustrator 28.5 交付经过加载与交互验证的原生画布表格插件，并通过公开 GitHub 仓库的 Actions 编译生成安装包。
 
@@ -184,5 +184,12 @@ README.md                            状态、安装、使用和卸载
 
 - 已确认：用户回复“开始吧”，设计获认可。
 - 当前实施建议：由本对话直接执行上述任务，避免在 SDK 接入尚未确认前拆成多个并行工作。
-- 尚需用户审阅本计划并确认执行方式。
-- 外部资源：官方 Illustrator 2024 Windows C++ SDK 尚未取得；没有该资源就无法完成 Task 1 的原生编译与宿主加载。后续实施中可先准备不依赖 SDK 的核心测试，但不得宣称原生插件已交付。
+- 已取得官方 Illustrator 2024 Windows C++ SDK，云端按 v142/x64 编译；SDK 留在忽略目录和未发布的构建输入中。
+
+## 补充任务：侧边栏、模拟测试与插行无响应修复
+
+- [ ] 提取共享结构命令，先运行连续合并、跨合并插行、拆分、删除和保存往返的失败模拟测试，再实现接口。
+- [ ] 使用同一 C++ 核心建立可操作的侧边栏模拟页面；显示选区、错误、撤销与测试状态。
+- [ ] SDK AIPanel 原生可停靠侧栏；按钮经应用上下文调用既有命令，和菜单共用逻辑。
+- [ ] 插入行增加阶段诊断，重现并定位无响应；明确记录原因后修复，保持文字及撤销一致。
+- [ ] 云端编译、模拟测试、安装包检查及 Illustrator 28.5 实测全部通过后交付；未验证项目继续明确记录。

@@ -12,4 +12,6 @@ if (-not (Test-Path -LiteralPath (Join-Path $resolvedSdk 'illustratorapi/illustr
 if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
 & cmake --build (Join-Path $projectRoot 'build/native') --config $Configuration --parallel 2
 if ($LASTEXITCODE -ne 0) { throw 'Native plugin compilation failed.' }
+& ctest --test-dir (Join-Path $projectRoot 'build/native') -C $Configuration --output-on-failure
+if ($LASTEXITCODE -ne 0) { throw 'Native SDK or core regression tests failed.' }
 

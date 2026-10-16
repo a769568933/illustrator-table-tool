@@ -13,6 +13,7 @@
 #include "AIAnnotatorDrawer.h"
 #include "AIDocumentView.h"
 #include "table/Interaction.hpp"
+#include "table/Commands.hpp"
 #include <cstring>
 #include <exception>
 #include <cmath>
@@ -215,20 +216,7 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
                     checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
                     adapter.applyStyle(table,selection,*style);invalidate(suites);return kNoErr;
                 }
-                if(index==0) model.merge(selection);
-                else if(index==1) {
-                    std::vector<table::CellId> cells;
-                    for(int r=selection.firstRow;r<=selection.lastRow;++r) for(int c=selection.firstColumn;c<=selection.lastColumn;++c) {
-                        auto id=model.cellAt(r,c).id;if(std::find(cells.begin(),cells.end(),id)==cells.end()) cells.push_back(id);
-                    }
-                    for(auto id:cells) model.split(id);
-                }
-                else if(index==2) model.insertRows(selection.firstRow,1);
-                else if(index==3) model.insertRows(selection.lastRow+1,1);
-                else if(index==4) model.insertColumns(selection.firstColumn,1);
-                else if(index==5) model.insertColumns(selection.lastColumn+1,1);
-                else if(index==6) model.eraseRows(selection.firstRow,selection.lastRow-selection.firstRow+1);
-                else if(index==7) model.eraseColumns(selection.firstColumn,selection.lastColumn-selection.firstColumn+1);
+                if(index<8) model=table::applyCommand(model,selection,static_cast<table::Command>(index));
                 checked(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)->LoseTextFocus());
                 checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
                 if(index==8) {adapter.detach(table);state->active.reset();}

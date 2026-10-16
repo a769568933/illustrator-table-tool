@@ -2,6 +2,7 @@
 #include "table/Geometry.hpp"
 #include "table/Interaction.hpp"
 #include "table/Serialization.hpp"
+#include "table/Commands.hpp"
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -200,8 +201,25 @@ void styling() {
     auto legacy=deserialize("ITT1\n1 1 2\n20\n20\n1\n1 0 0 1 1\n0\n\n0\n\n0\n");
     expect(legacy.cellAt(0,0).style.fontSize==12,"legacy documents use default styles");
 }
+void sidebarWorkflow() {
+    using namespace table;
+    auto model=TableModel::create(3,3,mm(90),mm(45));
+    model.setText(model.cellAt(0,0).id,u"名称");model.setText(model.cellAt(0,1).id,u"价格");
+    const auto original=serialize(model);
+    model=applyCommand(model,{0,0,1,1},Command::Merge);
+    expect(model.cellAt(1,1).text==u"名称\n价格\n\n","sidebar merge retains row-major cell text");
+    model=applyCommand(model,{0,0,0,0},Command::InsertRowBelow);
+    expect(model.rows()==4&&model.cellAt(2,1).rowSpan==3,"sidebar insertion expands an intersected merge");
+    model=applyCommand(model,{0,0,2,1},Command::Split);
+    expect(model.cellAt(0,1).text==u"价格"&&model.cellAt(1,0).text.empty(),"sidebar split restores content around an inserted row");
+    model=applyCommand(model,{1,0,1,2},Command::DeleteRows);
+    expect(serialize(model).find("价格")!=std::string::npos,"sidebar deletion retains surviving content");
+    auto restored=deserialize(original);
+    expect(restored.cellAt(0,1).text==u"价格"&&restored.rows()==3,"simulation undo snapshot restores complete table");
+    rejects([&]{applyCommand(model,{0,0,model.rows()-1,0},Command::DeleteRows);});
+}
 }
 int main() {
-    try { creation(); geometry(); interaction(); merging(); structure(); persistence(); styling(); std::cout << checks << " checks passed\n"; return 0; }
+    try { creation(); geometry(); interaction(); merging(); structure(); persistence(); styling(); sidebarWorkflow(); std::cout << checks << " checks passed\n"; return 0; }
     catch (const std::exception& error) { std::cerr << "FAIL after " << checks << " checks: " << error.what() << '\n'; return 1; }
 }
