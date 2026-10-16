@@ -9,13 +9,15 @@ extern "C" { extern AIUnicodeStringSuite* sAIUnicodeString; extern SPBlocksSuite
 inline void checked(ASErr error) { if(error) throw error; }
 class Suites {
     SPBasicSuite* basic;
+    AIUnicodeStringSuite* previousUnicode;
+    SPBlocksSuite* previousBlocks;
     struct Acquired { const char* name; ai::int32 version; };
     std::vector<Acquired> acquired;
 public:
-    explicit Suites(SPBasicSuite* value) : basic(value) {}
+    explicit Suites(SPBasicSuite* value) : basic(value),previousUnicode(sAIUnicodeString),previousBlocks(sSPBlocks) {}
     ~Suites() {
         for(auto it=acquired.rbegin();it!=acquired.rend();++it) basic->ReleaseSuite(it->name,it->version);
-        sAIUnicodeString=nullptr; sSPBlocks=nullptr;
+        sAIUnicodeString=previousUnicode; sSPBlocks=previousBlocks;
     }
     template<class T> T* get(const char* name,ai::int32 version) {
         const void* result=nullptr;
