@@ -44,8 +44,18 @@ AIArtHandle DocumentAdapter::newPath(AIArtHandle group) {
 }
 void DocumentAdapter::setPaint(AIArtHandle path,bool fill,bool stroke,AIReal gray) {
     AIPathStyle style; style.Init(); style.fillPaint=fill; style.strokePaint=stroke;
-    style.fill.color.kind=kGrayColor; style.fill.color.c.g.gray=gray;
-    style.stroke.color.kind=kGrayColor; style.stroke.color.c.g.gray=0;
+    ai::int16 mode=kDocUnknownColor; checked(document->GetDocumentColorModel(&mode));
+    auto neutral=[&](AIReal brightness) {
+        AIColor color; color.Init();
+        if(mode==kDocRGBColor) {
+            color.kind=kThreeColor; color.c.rgb.red=color.c.rgb.green=color.c.rgb.blue=brightness;
+        } else {
+            color.kind=kFourColor; color.c.f.cyan=color.c.f.magenta=color.c.f.yellow=0; color.c.f.black=1-brightness;
+        }
+        return color;
+    };
+    style.fill.color=neutral(gray);
+    style.stroke.color=neutral(0);
     style.stroke.width=0.75; style.stroke.miterLimit=4;
     checked(styles->SetPathStyle(path,&style));
 }
