@@ -1,6 +1,7 @@
 #include "table/TableModel.hpp"
 #include "table/Geometry.hpp"
 #include "table/Interaction.hpp"
+#include "table/Serialization.hpp"
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -152,8 +153,30 @@ void structure() {
     auto same=model.cellAt(0,0).id; model.insertColumns(0,1);
     expect(model.cellAt(0,1).id==same,"insert at start shifts rather than expands cell");
 }
+void persistence() {
+    using namespace table;
+    auto model=TableModel::create(3,3,mm(90),mm(30));
+    auto id=model.cellAt(0,0).id;
+    model.setText(id,u"中文\n\"quoted\" \\ emoji \U0001f642");
+    model.setText(model.cellAt(1,1).id,u"原始内容");
+    model.merge({0,0,1,1}); model.insertColumns(1,1);
+    auto encoded=serialize(model);
+    expect(encoded.find("\xe4\xb8\xad\xe6\x96\x87")!=std::string::npos,"format stores UTF-8 text");
+    auto decoded=deserialize(encoded);
+    expect(serialize(decoded)==encoded,"deterministic model round trip");
+    decoded.split(id);
+    expect(decoded.cellAt(1,2).text==u"原始内容","merge history survives persistence");
+    rejects([]{deserialize("ITT99\n");});
+    rejects([&]{deserialize(encoded.substr(0,encoded.size()/2));});
+    rejects([&]{deserialize(encoded+"unexpected data");});
+    rejects([]{deserialize("ITT1\n100 50 1\n");});
+    auto bad=model; bad.setText(id,std::u16string(1,static_cast<char16_t>(0xd800)));
+    rejects([&]{serialize(bad);});
+    std::string duplicate="ITT1\n1 2 3\n10\n10 10\n2\n1 0 0 1 1\n0\n\n0\n\n0\n1 0 1 1 1\n0\n\n0\n\n0\n";
+    rejects([&]{deserialize(duplicate);});
+}
 }
 int main() {
-    try { creation(); geometry(); interaction(); merging(); structure(); std::cout << checks << " checks passed\n"; return 0; }
+    try { creation(); geometry(); interaction(); merging(); structure(); persistence(); std::cout << checks << " checks passed\n"; return 0; }
     catch (const std::exception& error) { std::cerr << "FAIL after " << checks << " checks: " << error.what() << '\n'; return 1; }
 }

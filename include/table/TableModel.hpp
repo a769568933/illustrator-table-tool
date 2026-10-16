@@ -1,6 +1,7 @@
 #pragma once
 #include "Types.hpp"
 #include <vector>
+#include <string_view>
 
 namespace table {
 class TableModel {
@@ -10,6 +11,8 @@ class TableModel {
     CellId nextId = 1;
     TableModel() = default;
     void changeTracks(bool vertical, int first, int count, bool insert);
+    friend std::string serialize(const TableModel& model);
+    friend TableModel deserialize(std::string_view data);
 public:
     static TableModel create(int rows, int columns, double widthPt, double heightPt);
     int rows() const { return static_cast<int>(rowHeights.size()); }
