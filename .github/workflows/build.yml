@@ -48,7 +48,7 @@ jobs:
         run: python scripts/fetch_sdk.py
       - name: Compile Illustrator 2024 x64 plugin with v142
         shell: pwsh
-        run: ./scripts/build.ps1 -SdkRoot './.local/sdk/Adobe Illustrator 2024 SDK'
+        run: ./scripts/build.ps1 -SdkRoot './.local/sdk/Adobe Illustrator 2024 SDK' -HostAcceptance:($env:GITHUB_REF -eq 'refs/heads/codex/native-table')
       - name: Verify native binary and package development build
         shell: pwsh
         run: |

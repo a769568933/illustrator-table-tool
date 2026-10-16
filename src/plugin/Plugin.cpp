@@ -4,6 +4,9 @@
 #include "Dialogs.hpp"
 #include "Sidebar.hpp"
 #include "Trace.hpp"
+#ifdef TABLE_HOST_ACCEPTANCE
+#include "HostAcceptance.hpp"
+#endif
 #include "SPInterf.h"
 #include "AIPlugin.h"
 #include "AIMenu.h"
@@ -31,6 +34,9 @@ bool is(const char* value,const char* expected){ return std::strcmp(value,expect
 struct State {
     AIMenuItemHandle parent=nullptr, about=nullptr, create=nullptr, edit=nullptr;
     AIMenuItemHandle showSidebar=nullptr;
+#ifdef TABLE_HOST_ACCEPTANCE
+    AIMenuItemHandle acceptance=nullptr;
+#endif
     std::array<AIMenuItemHandle,10> commands{};
     AIToolHandle tool=nullptr;
     AIAnnotatorHandle annotator=nullptr;
@@ -90,6 +96,9 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
     add("IllustratorTableTool.About","关于画布表格…",&state.about);
     add("IllustratorTableTool.Create","新建表格…",&state.create);
     add("IllustratorTableTool.Edit","选择和调整单元格",&state.edit);
+#ifdef TABLE_HOST_ACCEPTANCE
+    add("IllustratorTableTool.Acceptance","运行开发验收（新测试文档）",&state.acceptance);
+#endif
     const char* names[]={"合并单元格","拆分单元格","在上方插入行","在下方插入行","在左侧插入列","在右侧插入列","删除所选行","删除所选列","转换为普通对象","单元格样式…"};
     for(std::size_t i=0;i<state.commands.size();++i) {
         auto key="IllustratorTableTool.Command"+std::to_string(i);add(key.c_str(),names[i],&state.commands[i]);
@@ -273,6 +282,15 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
         if(is(caller,kCallerAIMenu)&&is(selector,kSelectorAIGoMenuItem)) {
             MutationScope operation(*state);
             auto item=static_cast<AIMenuMessage*>(message)->menuItem;
+#ifdef TABLE_HOST_ACCEPTANCE
+            if(item==state->acceptance) {
+                state->active.reset();state->interaction.clearSelection();state->tables.clear();
+                try {runHostAcceptance(suites);}
+                catch(const std::exception& error) {traceStage(error.what());MessageBoxA(nullptr,error.what(),"Host acceptance failed",MB_OK|MB_ICONERROR);}
+                catch(ASErr error) {traceStage("acceptance.SDK.error");MessageBoxW(nullptr,L"原生验收遇到 SDK 错误，请查看阶段日志。",L"开发验收",MB_OK|MB_ICONERROR);return error;}
+                return kNoErr;
+            }
+#endif
             if(item==state->showSidebar) {showSidebar(*state,suites);updateSidebar(*state,suites);return kNoErr;}
             if(item==state->about) MessageBoxW(nullptr,L"AI 画布表格工具 · 开发版\n单击选格，Shift 多选，拖动边线，双击编辑文字。\n通过“窗口 → 画布表格”打开侧边栏。",L"AI 画布表格工具",MB_OK|MB_ICONINFORMATION);
             else if(item==state->create||item==state->edit) {
