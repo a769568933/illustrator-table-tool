@@ -14,6 +14,7 @@ using CompositionReader=std::function<CompositionUpdate(HWND,LPARAM)>;
 std::u16string decodeClipboardText(HGLOBAL memory);
 class InputWindow {
     HWND window=nullptr,owner=nullptr;HINSTANCE module=nullptr;
+    HHOOK keyboardMessages=nullptr;
     std::function<void(const InputEvent&)> callback;CompositionReader reader;
     bool compositionActive=false,commitPending=false;std::uint64_t commitSerial=0;std::u16string duplicateChars;char16_t pendingHigh=0;
     bool focusRequested=false;
@@ -21,6 +22,9 @@ class InputWindow {
     void character(char16_t value);
     LRESULT message(UINT message,WPARAM wParam,LPARAM lParam);
     static LRESULT CALLBACK procedure(HWND,UINT,WPARAM,LPARAM);
+    static LRESULT CALLBACK keyboardMessage(int,WPARAM,LPARAM);
+    void captureKeyboard();
+    void releaseKeyboard();
 public:
     InputWindow()=default;
     InputWindow(const InputWindow&)=delete;

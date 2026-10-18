@@ -6,6 +6,7 @@
 namespace {
 constexpr wchar_t className[]=L"IllustratorTableTool.Input.v3";
 constexpr UINT deferredFocus=WM_APP+0x421;
+thread_local InputWindow* keyboardOwner=nullptr;
 std::uint32_t modifiers(){return ((GetKeyState(VK_SHIFT)&0x8000)?InputShift:0)|((GetKeyState(VK_CONTROL)&0x8000)?InputControl:0)|((GetKeyState(VK_MENU)&0x8000)?InputAlt:0);}
 struct ImeContext {HWND window;HIMC value;explicit ImeContext(HWND h):window(h),value(ImmGetContext(h)){}~ImeContext(){if(value)ImmReleaseContext(window,value);}};
 struct ClipboardScope {explicit ClipboardScope(HWND h){if(!OpenClipboard(h))throw table::ValidationError("Clipboard is busy");}~ClipboardScope(){CloseClipboard();}};
@@ -44,8 +45,33 @@ void InputWindow::create(HWND parent,std::function<void(const InputEvent&)> targ
     ImmAssociateContextEx(window,nullptr,IACE_DEFAULT);SetTimer(window,1,500,nullptr);
 }
 void InputWindow::emit(const InputEvent& event){if(callback)callback(event);}
+void InputWindow::captureKeyboard(){
+    if(keyboardMessages)return;
+    if(keyboardOwner&&keyboardOwner!=this)throw table::ValidationError("Another table input owns keyboard routing");
+    keyboardMessages=SetWindowsHookExW(WH_GETMESSAGE,keyboardMessage,module,GetCurrentThreadId());
+    if(!keyboardMessages)throw table::ValidationError("Cannot protect table input from host shortcuts");
+    keyboardOwner=this;
+}
+void InputWindow::releaseKeyboard(){
+    if(keyboardMessages){UnhookWindowsHookEx(keyboardMessages);keyboardMessages=nullptr;}
+    if(keyboardOwner==this)keyboardOwner=nullptr;
+}
+LRESULT CALLBACK InputWindow::keyboardMessage(int code,WPARAM removed,LPARAM data){
+    auto input=keyboardOwner;const auto hook=input?input->keyboardMessages:nullptr;
+    if(code==HC_ACTION&&removed==PM_REMOVE&&input){
+        auto message=reinterpret_cast<MSG*>(data);
+        // Consume only this focused custom window's keyboard messages before the
+        // host's accelerator loop. Translate once so normal text and IME retain
+        // Windows character translation; do not intercept another window/thread.
+        if(message->hwnd==input->window&&GetFocus()==input->window&&message->message>=WM_KEYFIRST&&message->message<=WM_KEYLAST){
+            const auto original=*message;message->message=WM_NULL;message->wParam=message->lParam=0;
+            TranslateMessage(&original);DispatchMessageW(&original);
+        }
+    }
+    return CallNextHookEx(hook,code,removed,data);
+}
 void InputWindow::focus(){if(window){focusRequested=true;if(!PostMessageW(window,deferredFocus,0,0))throw table::ValidationError("Cannot queue editor focus");}}
-void InputWindow::blur(){focusRequested=false;if(window){ShowWindow(window,SW_HIDE);if(GetFocus()==window&&owner)SetFocus(owner);}}
+void InputWindow::blur(){focusRequested=false;releaseKeyboard();if(window){ShowWindow(window,SW_HIDE);if(GetFocus()==window&&owner)SetFocus(owner);}}
 void InputWindow::setCaretScreen(POINT point){
     if(!window)return;if(owner)ScreenToClient(owner,&point);
     SetWindowPos(window,nullptr,point.x,point.y,1,1,SWP_NOZORDER|SWP_NOACTIVATE);
@@ -98,14 +124,15 @@ LRESULT InputWindow::message(UINT message,WPARAM wParam,LPARAM lParam){
         if(wParam>0x10ffff)throw table::ValidationError("Invalid input code point");
         if(wParam>0xffff){const auto cp=static_cast<std::uint32_t>(wParam)-0x10000;character(static_cast<char16_t>(0xd800+(cp>>10)));character(static_cast<char16_t>(0xdc00+(cp&1023)));}
         else character(static_cast<char16_t>(wParam));return 0;
-    case WM_KEYDOWN:{
+    case WM_KEYDOWN:case WM_SYSKEYDOWN:{
         duplicateChars.clear();const auto mods=modifiers();
         if(compositionActive){if(wParam==VK_ESCAPE){cancelComposition();return 0;}return DefWindowProcW(window,message,wParam,lParam);}
         emit({InputKind::Key,{},static_cast<std::uint32_t>(wParam),mods});return 0;
     }
+    case WM_KEYUP:case WM_SYSKEYUP:case WM_SYSCHAR:case WM_SYSDEADCHAR:return 0;
     case WM_PASTE:pasteText();return 0;
-    case WM_SETFOCUS:traceStage("input.focus.gained");break;
-    case WM_KILLFOCUS:traceStage("input.focus.lost");pendingHigh=0;emit({InputKind::FocusLost,{}});return 0;
+    case WM_SETFOCUS:captureKeyboard();traceStage("input.focus.gained");break;
+    case WM_KILLFOCUS:releaseKeyboard();traceStage("input.focus.lost");pendingHigh=0;emit({InputKind::FocusLost,{}});return 0;
     case WM_TIMER:if(wParam==1)emit({InputKind::Blink,{}});return 0;
     }
     return DefWindowProcW(window,message,wParam,lParam);
@@ -114,11 +141,11 @@ LRESULT CALLBACK InputWindow::procedure(HWND window,UINT message,WPARAM wParam,L
     auto self=reinterpret_cast<InputWindow*>(GetWindowLongPtrW(window,GWLP_USERDATA));
     if(message==WM_NCCREATE){self=static_cast<InputWindow*>(reinterpret_cast<CREATESTRUCTW*>(lParam)->lpCreateParams);self->window=window;SetWindowLongPtrW(window,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(self));}
     if(!self)return DefWindowProcW(window,message,wParam,lParam);
-    if(message==WM_NCDESTROY){SetWindowLongPtrW(window,GWLP_USERDATA,0);self->window=nullptr;return DefWindowProcW(window,message,wParam,lParam);}
+    if(message==WM_NCDESTROY){self->releaseKeyboard();SetWindowLongPtrW(window,GWLP_USERDATA,0);self->window=nullptr;return DefWindowProcW(window,message,wParam,lParam);}
     try{return self->message(message,wParam,lParam);}catch(...){try{self->emit({InputKind::Error,u"输入未完成，请重新选择单元格后重试。"});}catch(...){}return 0;}
 }
 void InputWindow::destroy(){
-    focusRequested=false;callback={};
+    focusRequested=false;releaseKeyboard();callback={};
     if(window){const auto original=window;cancelComposition();KillTimer(original,1);if(GetFocus()==original&&owner)SetFocus(owner);DestroyWindow(original);window=nullptr;}
     if(module&&UnregisterClassW(className,module))module=nullptr;
 }
