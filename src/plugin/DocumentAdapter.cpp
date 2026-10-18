@@ -11,7 +11,7 @@ struct DictionaryLease {AIDictionarySuite* suite;AIDictionaryRef value=nullptr;~
 bool sameColor(const table::Color& a,const table::Color& b){return a.red==b.red&&a.green==b.green&&a.blue==b.blue;}
 bool sameTextStyle(const table::Cell& a,const table::Cell& b){
     const auto& x=a.style;const auto& y=b.style;
-    if(a.text!=b.text||x.font!=y.font||x.fontSize!=y.fontSize||!sameColor(x.text,y.text)||x.padding!=y.padding||x.alignment!=y.alignment||
+    if(a.text!=b.text||x.font!=y.font||x.fontSize!=y.fontSize||!sameColor(x.text,y.text)||x.padding!=y.padding||x.alignment!=y.alignment||x.verticalAlignment!=y.verticalAlignment||
         a.formatting.runs.size()!=b.formatting.runs.size()||a.formatting.paragraphs.size()!=b.formatting.paragraphs.size())return false;
     for(std::size_t i=0;i<a.formatting.runs.size();++i){const auto& p=a.formatting.runs[i];const auto& q=b.formatting.runs[i];
         if(p.start!=q.start||p.length!=q.length||p.font!=q.font||p.fontSize!=q.fontSize||!sameColor(p.color,q.color))return false;}
@@ -107,7 +107,7 @@ NativeTable DocumentAdapter::createTable(const table::TableModel& model,AIRealPo
         checked(art->NewArt(kGroupArt,kPlaceAboveAll,nullptr,&native.group));checked(art->SetArtName(native.group,ai::UnicodeString::FromUTF8("画布表格")));
         native.frame=vector.path(native.group);vector.rectangle(native.frame,{0,0,model.width(),model.height()},native.transform());vector.paint(native.frame,{},false);role(native.frame,"frame");
         for(const auto& cell:model.cells()){
-            const auto bounds=table::Geometry::cellBounds(model,cell.id);auto fill=vector.path(native.group);vector.rectangle(fill,bounds,native.transform());vector.paint(fill,cell.style.fill,true);
+            const auto bounds=table::Geometry::cellBounds(model,cell.id);auto fill=vector.path(native.group);vector.rectangle(fill,bounds,native.transform());vector.paint(fill,cell.style.fill,cell.style.fillEnabled);
             auto content=vector.content(native.group,bounds,native.transform(),*layouts.at(cell.id));role(fill,"fill:"+std::to_string(cell.id));role(content,"content:"+std::to_string(cell.id));
             native.cells.push_back({cell.id,fill,content,layouts.at(cell.id)});
         }
@@ -120,7 +120,7 @@ NativeTable DocumentAdapter::readTable(AIArtHandle group){
     DictionaryLease dictionary{dictionaries};checked(art->GetDictionary(group,&dictionary.value));const auto key=dictionaries->Key(modelKey);std::size_t size=0;
     checked(dictionaries->GetBinaryEntry(dictionary.value,key,nullptr,&size));if(!size||size>16*1024*1024)throw table::ValidationError("Invalid model size");
     std::string bytes(size,'\0');checked(dictionaries->GetBinaryEntry(dictionary.value,key,bytes.data(),&size));
-    if(size!=bytes.size()||bytes.substr(0,5)!="ITT3\n")throw table::ValidationError("Unsupported table model");
+    if(size!=bytes.size()||(bytes.substr(0,5)!="ITT3\n"&&bytes.substr(0,5)!="ITT4\n"))throw table::ValidationError("Unsupported table model");
     NativeTable native{table::deserialize(bytes)};native.group=group;checked(document->GetDocument(&native.document));
     std::map<std::string,AIArtHandle> roles;AIArtHandle child=nullptr;checked(art->GetArtFirstChild(group,&child));std::size_t visited=0;
     while(child){
@@ -188,7 +188,7 @@ void DocumentAdapter::apply(NativeTable& native,const table::TableModel& model,c
                 if(previous.borderWidth!=cell.style.borderWidth||previous.revision!=cell.style.revision||!sameColor(previous.border,cell.style.border))bordersChanged=true;}
             auto fill=existing?old->fill:vector.path(native.group);
             if(moved)vector.rectangle(fill,bounds,next.transform());
-            if(!existing||!sameColor(native.model.cellById(cell.id).style.fill,cell.style.fill))vector.paint(fill,cell.style.fill,true);
+            if(!existing||!sameColor(native.model.cellById(cell.id).style.fill,cell.style.fill)||native.model.cellById(cell.id).style.fillEnabled!=cell.style.fillEnabled)vector.paint(fill,cell.style.fill,cell.style.fillEnabled);
             if(!existing)role(fill,"fill:"+std::to_string(cell.id));
             auto content=existing?old->content:nullptr;
             if(moved||old->layout!=layouts.at(cell.id)){

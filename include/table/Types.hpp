@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <optional>
 
 namespace table {
 using CellId = std::uint64_t;
@@ -21,6 +22,14 @@ struct CellStyle {
     std::u16string font;
     int alignment=0; // left, center, right
     std::uint64_t revision=0; // Most recently styled cell wins a shared border.
+    bool fillEnabled=false;
+    int verticalAlignment=0; // top, center, bottom
+};
+struct CellStylePatch {
+    std::optional<std::u16string> font;
+    std::optional<double> fontSize;
+    std::optional<int> alignment,verticalAlignment;
+    std::optional<bool> fillEnabled;
 };
 void validateStyle(const CellStyle& style);
 struct TextRun {

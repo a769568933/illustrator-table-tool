@@ -3,6 +3,8 @@
 #endif
 #include "plugin/InputWindow.hpp"
 #include "plugin/EditorOverlay.hpp"
+#include "text/TextLayoutInternal.hpp"
+#include <wincodec.h>
 #include <imm.h>
 #include <cmath>
 #include <iostream>
@@ -127,8 +129,28 @@ void pt_dpi_roundtrip(){
     OverlayFrame invalid;invalid.layout=layout;invalid.width=20000;invalid.height=20000;bool refused=false;
     try{renderEditorOverlay(invalid);}catch(const ValidationError&){refused=true;}expect(refused,"overlay allocation bounded");
 }
+void transparent_preview_keeps_canvas_visible(){
+    using namespace table::text_detail;
+    OverlayFrame frame;frame.layout=layoutText({u"",{},CellStyle{},80,40});frame.width=80;frame.height=40;frame.backgroundEnabled=false;
+    const auto rendered=renderEditorOverlay(frame);
+    expect(rendered.png.size()>8,"transparent preview must provide an alpha-capable encoded image");
+    const auto initialized=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);if(FAILED(initialized))throw std::runtime_error("preview test COM unavailable");
+    {
+        ComRef<IWICImagingFactory> factory;check(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,__uuidof(IWICImagingFactory),reinterpret_cast<void**>(factory.put())));
+        ComRef<IWICStream> stream;check(factory->CreateStream(stream.put()));check(stream->InitializeFromMemory(const_cast<BYTE*>(rendered.png.data()),static_cast<DWORD>(rendered.png.size())));
+        ComRef<IWICBitmapDecoder> decoder;check(factory->CreateDecoderFromStream(stream.get(),nullptr,WICDecodeMetadataCacheOnLoad,decoder.put()));
+        ComRef<IWICBitmapFrameDecode> image;check(decoder->GetFrame(0,image.put()));ComRef<IWICFormatConverter> converter;check(factory->CreateFormatConverter(converter.put()));
+        check(converter->Initialize(image.get(),GUID_WICPixelFormat32bppRGBA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom));
+        std::vector<BYTE> pixels(80*40*4);check(converter->CopyPixels(nullptr,80*4,static_cast<UINT>(pixels.size()),pixels.data()));
+        expect(pixels.back()==0,"blank preview corner stays transparent after PNG encoding");
+        const auto caret=frame.layout->caret(0);bool visible=false;
+        for(int y=static_cast<int>(caret.top);y<std::min(40,static_cast<int>(caret.bottom));++y)for(int x=2;x<5;++x)if(pixels[4*(y*80+x)+3]>0)visible=true;
+        expect(visible,"transparent preview retains visible caret pixels");
+    }
+    CoUninitialize();
+}
 }
 int main(){try{
-    custom_window_has_no_edit_children();ime_commit_once();ime_cancel_keeps_model();surrogate_input_is_atomic();focus_survives_host_callback_restore();editor_keys_precede_host_accelerators();clipboard_unlock_on_failure();pt_dpi_roundtrip();
+    transparent_preview_keeps_canvas_visible();custom_window_has_no_edit_children();ime_commit_once();ime_cancel_keeps_model();surrogate_input_is_atomic();focus_survives_host_callback_restore();editor_keys_precede_host_accelerators();clipboard_unlock_on_failure();pt_dpi_roundtrip();
     std::cout<<checks<<" input and preview checks passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

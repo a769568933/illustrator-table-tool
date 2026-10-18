@@ -25,7 +25,7 @@ OverlayBitmap renderEditorOverlay(const OverlayFrame& frame){
     auto properties=D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_SOFTWARE,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
     ComRef<ID2D1RenderTarget> target;check(factory->CreateWicBitmapRenderTarget(bitmap.get(),properties,target.put()));
     ComRef<ID2D1SolidColorBrush> brush;check(target->CreateSolidColorBrush(D2D1::ColorF(0,0,0,1),brush.put()));
-    target->BeginDraw();target->Clear(D2D1::ColorF(static_cast<FLOAT>(frame.background.red),static_cast<FLOAT>(frame.background.green),static_cast<FLOAT>(frame.background.blue),1));
+    target->BeginDraw();target->Clear(frame.backgroundEnabled?D2D1::ColorF(static_cast<FLOAT>(frame.background.red),static_cast<FLOAT>(frame.background.green),static_cast<FLOAT>(frame.background.blue),1):D2D1::ColorF(0,0,0,0));
     target->SetTransform(D2D1::Matrix3x2F(static_cast<FLOAT>(frame.scaleX),0,0,static_cast<FLOAT>(frame.scaleY),static_cast<FLOAT>(frame.offsetPixels.x),static_cast<FLOAT>(frame.offsetPixels.y)));
     brush->SetColor(D2D1::ColorF(0.62f,0.78f,1.f,1.f));
     for(const auto& rect:frame.layout->selection(frame.anchor,frame.caret))target->FillRectangle(rectangle(rect),brush.get());
@@ -51,5 +51,17 @@ OverlayBitmap renderEditorOverlay(const OverlayFrame& frame){
     OverlayBitmap result{frame.width,frame.height,std::vector<std::uint8_t>(static_cast<std::size_t>(frame.width)*frame.height*3)};
     for(std::uint32_t y=0;y<frame.height;++y)for(std::uint32_t x=0;x<frame.width;++x){const auto source=data+static_cast<std::size_t>(y)*stride+4*x;const auto destination=3*(static_cast<std::size_t>(y)*frame.width+x);
         result.rgb[destination]=source[2];result.rgb[destination+1]=source[1];result.rgb[destination+2]=source[0];}
+    lock.reset();
+    if(!frame.backgroundEnabled){
+        ComRef<IStream> stream;check(CreateStreamOnHGlobal(nullptr,TRUE,stream.put()));
+        ComRef<IWICBitmapEncoder> encoder;check(imaging->CreateEncoder(GUID_ContainerFormatPng,nullptr,encoder.put()));check(encoder->Initialize(stream.get(),WICBitmapEncoderNoCache));
+        ComRef<IWICBitmapFrameEncode> encoded;check(encoder->CreateNewFrame(encoded.put(),nullptr));check(encoded->Initialize(nullptr));check(encoded->SetSize(frame.width,frame.height));
+        auto format=GUID_WICPixelFormat32bppBGRA;check(encoded->SetPixelFormat(&format));if(!IsEqualGUID(format,GUID_WICPixelFormat32bppBGRA))throw table::ValidationError("Preview encoder lost alpha support");
+        ComRef<IWICFormatConverter> converter;check(imaging->CreateFormatConverter(converter.put()));
+        check(converter->Initialize(bitmap.get(),format,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom));check(encoded->WriteSource(converter.get(),nullptr));check(encoded->Commit());check(encoder->Commit());
+        STATSTG info{};check(stream->Stat(&info,STATFLAG_NONAME));if(info.cbSize.QuadPart>128*1024*1024)throw table::ValidationError("Encoded preview exceeds limit");
+        result.png.resize(static_cast<std::size_t>(info.cbSize.QuadPart));LARGE_INTEGER zero{};check(stream->Seek(zero,STREAM_SEEK_SET,nullptr));ULONG read=0;
+        check(stream->Read(result.png.data(),static_cast<ULONG>(result.png.size()),&read));if(read!=result.png.size())throw table::ValidationError("Incomplete preview image");
+    }
     return result;
 }

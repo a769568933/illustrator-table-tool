@@ -25,16 +25,18 @@ std::u16string readText(std::istream& in) {
 void writeStyle(std::ostream& out,const CellStyle& style) {
     validateStyle(style);
     for(const auto color:{style.fill,style.border,style.text}) out<<color.red<<' '<<color.green<<' '<<color.blue<<' ';
-    out<<style.fontSize<<' '<<style.borderWidth<<' '<<style.padding<<' '<<style.alignment<<' '<<style.revision<<'\n';
+    out<<style.fontSize<<' '<<style.borderWidth<<' '<<style.padding<<' '<<style.alignment<<' '<<style.revision<<' '<<style.fillEnabled<<' '<<style.verticalAlignment<<'\n';
     writeText(out,style.font);
 }
-CellStyle readStyle(std::istream& in) {
+CellStyle readStyle(std::istream& in,bool extended) {
     CellStyle style;
     for(auto* color:{&style.fill,&style.border,&style.text}) {
         color->red=number<double>(in);color->green=number<double>(in);color->blue=number<double>(in);
     }
     style.fontSize=number<double>(in);style.borderWidth=number<double>(in);style.padding=number<double>(in);
     style.alignment=number<int>(in);style.revision=number<std::uint64_t>(in);
+    style.fillEnabled=true;
+    if(extended){const auto fill=number<int>(in);if(fill<0||fill>1)invalid();style.fillEnabled=fill!=0;style.verticalAlignment=number<int>(in);}
     if(in.get()!='\n') invalid();style.font=readText(in);validateStyle(style);return style;
 }
 void writeFormatting(std::ostream& out,const TextFormatting& format) {
@@ -97,7 +99,7 @@ void validate(const TableModel& model,CellId nextId) {
 std::string serialize(const TableModel& model) {
     validate(model,model.nextId);
     std::ostringstream out;out.imbue(std::locale::classic());out<<std::setprecision(std::numeric_limits<double>::max_digits10);
-    out<<"ITT3\n"<<model.rows()<<' '<<model.columns()<<' '<<model.nextId<<'\n';
+    out<<"ITT4\n"<<model.rows()<<' '<<model.columns()<<' '<<model.nextId<<'\n';
     for(auto h:model.rowHeights) out<<h<<' ';out<<'\n';
     for(auto w:model.columnWidths) out<<w<<' ';out<<'\n';
     out<<model.anchors.size()<<'\n';
@@ -114,7 +116,7 @@ std::string serialize(const TableModel& model) {
 TableModel deserialize(std::string_view data) {
     if(data.size()>maxDocumentBytes) invalid();
     std::istringstream in{std::string(data)};in.imbue(std::locale::classic());
-    std::string version;std::getline(in,version);if(version!="ITT1"&&version!="ITT2"&&version!="ITT3") invalid();
+    std::string version;std::getline(in,version);if(version!="ITT1"&&version!="ITT2"&&version!="ITT3"&&version!="ITT4") invalid();
     int rows=number<int>(in),cols=number<int>(in);
     if(rows<1||rows>100||cols<1||cols>50||rows*cols>2000) invalid();
     TableModel model;model.nextId=number<CellId>(in);
@@ -124,14 +126,14 @@ TableModel deserialize(std::string_view data) {
     std::size_t totalOriginals=0;
     for(std::size_t i=0;i<count;++i) {
         Cell c;c.id=number<CellId>(in);c.row=number<int>(in);c.column=number<int>(in);c.rowSpan=number<int>(in);c.columnSpan=number<int>(in);
-        if(in.get()!='\n') invalid();if(version!="ITT1") c.style=readStyle(in);
-        c.text=readText(in);if(version=="ITT3") c.formatting=readFormatting(in,c.text);c.mergedText=readText(in);
+        if(in.get()!='\n') invalid();c.style.fillEnabled=true;if(version!="ITT1") c.style=readStyle(in,version=="ITT4");
+        c.text=readText(in);if(version=="ITT3"||version=="ITT4") c.formatting=readFormatting(in,c.text);c.mergedText=readText(in);
         auto originals=number<std::size_t>(in);if(originals>static_cast<std::size_t>(rows*cols)) invalid();
         totalOriginals+=originals;if(totalOriginals>static_cast<std::size_t>(rows*cols)) invalid();
         for(std::size_t j=0;j<originals;++j) {
             OriginalCell original;original.id=number<CellId>(in);original.row=number<int>(in);original.column=number<int>(in);
-            if(in.get()!='\n') invalid();if(version!="ITT1") original.style=readStyle(in);
-            original.text=readText(in);if(version=="ITT3") original.formatting=readFormatting(in,original.text);c.originals.push_back(std::move(original));
+            if(in.get()!='\n') invalid();original.style.fillEnabled=true;if(version!="ITT1") original.style=readStyle(in,version=="ITT4");
+            original.text=readText(in);if(version=="ITT3"||version=="ITT4") original.formatting=readFormatting(in,original.text);c.originals.push_back(std::move(original));
         }
         model.anchors.push_back(std::move(c));
     }

@@ -80,6 +80,10 @@ INT_PTR CALLBACK styleProc(HWND window,UINT message,WPARAM wParam,LPARAM lParam)
         auto align=GetDlgItem(window,20205);
         for(auto label:{L"左对齐",L"居中",L"右对齐"}) SendMessageW(align,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(label));
         SendMessageW(align,CB_SETCURSEL,state->value.alignment,0);
+        auto vertical=GetDlgItem(window,20209);
+        for(auto label:{L"顶部对齐",L"垂直居中",L"底部对齐"})SendMessageW(vertical,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(label));
+        SendMessageW(vertical,CB_SETCURSEL,state->value.verticalAlignment,0);
+        CheckDlgButton(window,20210,state->value.fillEnabled?BST_UNCHECKED:BST_CHECKED);
         colorLabel(window,20206,state->value.fill);colorLabel(window,20207,state->value.border);colorLabel(window,20208,state->value.text);return TRUE;
     }
     if(message!=WM_COMMAND||!state) return FALSE;
@@ -91,6 +95,7 @@ INT_PTR CALLBACK styleProc(HWND window,UINT message,WPARAM wParam,LPARAM lParam)
         choose.rgbResult=rgb(*value);choose.lpCustColors=custom;choose.Flags=CC_FULLOPEN|CC_RGBINIT;
         if(ChooseColorW(&choose)) {
             *value={GetRValue(choose.rgbResult)/255.0,GetGValue(choose.rgbResult)/255.0,GetBValue(choose.rgbResult)/255.0};colorLabel(window,id,*value);
+            if(id==20206){state->value.fillEnabled=true;CheckDlgButton(window,20210,BST_UNCHECKED);}
         }
         return TRUE;
     }
@@ -98,11 +103,12 @@ INT_PTR CALLBACK styleProc(HWND window,UINT message,WPARAM wParam,LPARAM lParam)
         try {
             auto value=state->value;value.fontSize=number(window,20201);value.borderWidth=number(window,20202);value.padding=table::mm(number(window,20203));
             const auto selected=SendDlgItemMessageW(window,20204,CB_GETCURSEL,0,0);
-            value.font=selected>0 ? state->fonts->at(static_cast<std::size_t>(selected)-1).name : u"";
-            value.alignment=static_cast<int>(SendDlgItemMessageW(window,20205,CB_GETCURSEL,0,0));table::validateStyle(value);
+            if(selected>0)value.font=state->fonts->at(static_cast<std::size_t>(selected)-1).name;
+            value.alignment=static_cast<int>(SendDlgItemMessageW(window,20205,CB_GETCURSEL,0,0));
+            value.verticalAlignment=static_cast<int>(SendDlgItemMessageW(window,20209,CB_GETCURSEL,0,0));value.fillEnabled=IsDlgButtonChecked(window,20210)!=BST_CHECKED;table::validateStyle(value);
             state->value=std::move(value);state->accepted=true;EndDialog(window,IDOK);
         } catch(const std::exception&) {
-            MessageBoxW(window,L"字号范围 1–1000 点；边框粗细 0–100 点；内边距 0–100 毫米。\n内边距超过单元格尺寸时会自动限制，保证文字框仍然有效。",L"检查样式参数",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(window,L"字号范围 1–1000 点；边框粗细 0–100 点；内边距 0–100 毫米。\n内边距过大可能造成文字溢出，请适当扩大单元格。",L"检查样式参数",MB_OK|MB_ICONINFORMATION);
         }
         return TRUE;
     }

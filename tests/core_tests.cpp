@@ -272,7 +272,30 @@ void drag_cell_selection(){
     action.pointerDown(model,{30,10},false,1);action.pointerMove({35,10});
     expect(action.pointerUp().has_value(),"starting on an edge still resizes tracks");
 }
+void transparent_font_and_alignment_styles(){
+    using namespace table;auto model=TableModel::create(2,2,100,80);
+    expect(!model.cellAt(0,0).style.fillEnabled,"new tables default to transparent cells");
+    auto legacy=deserialize("ITT3\n1 1 2\n40\n100\n1\n1 0 0 1 1\n1 1 1 0 0 0 0 0 0 12 0.75 2.8346456692913389 0 0\n0\n\n0\n\n0\n0\n0\n\n0\n");
+    expect(legacy.cellAt(0,0).style.fillEnabled&&legacy.cellAt(0,0).style.verticalAlignment==0,"old ITT3 tables retain opaque fill and top alignment");
+    auto red=model.cellAt(0,0).style;red.text={1,0,0};red.fontSize=20;red.fillEnabled=true;model.setStyle({0,0,0,0},red);
+    auto id=model.cellAt(0,0).id;model.setRichText(id,u"AB",{{{0,1,u"Arial",24,{0,0,1}},{1,1,u"Arial",12,{0,1,0}}},{{0,0}}});
+    CellStylePatch patch;patch.font=u"宋体";patch.alignment=1;patch.verticalAlignment=2;
+    model.patchStyle({0,0,0,1},patch);
+    expect(model.cellAt(0,0).style.font==u"宋体"&&model.cellAt(0,1).style.font==u"宋体","font patch applies to all selected cells");
+    const auto& cell=model.cellAt(0,0);
+    expect(cell.style.fillEnabled&&!model.cellAt(0,1).style.fillEnabled&&cell.style.text.red==1&&cell.style.fontSize==20,"font and alignment preserve individual fill and size");
+    expect(cell.formatting.runs.at(0).font==u"宋体"&&cell.formatting.runs.at(0).fontSize==24&&cell.formatting.runs.at(1).color.green==1,"font patch preserves rich text sizes and colors");
+    expect(cell.formatting.paragraphs.at(0).alignment==1&&cell.style.verticalAlignment==2,"alignment updates paragraph overrides and vertical placement");
+    expect(model.cellAt(1,0).style.font.empty()&&model.cellAt(1,0).style.verticalAlignment==0,"style patch leaves unselected cells unchanged");
+    patch={};patch.fontSize=18;patch.fillEnabled=false;model.patchStyle({0,0,0,0},patch);
+    expect(model.cellAt(0,0).formatting.runs.at(0).fontSize==18&&!model.cellAt(0,0).style.fillEnabled,"size and transparency patch apply without clearing formatting");
+    model.merge({0,0,0,1});const auto saved=serialize(model);expect(saved.substr(0,5)=="ITT4\n","new style fields use versioned serialization");
+    auto restored=deserialize(saved);expect(restored.cellAt(0,0).style.verticalAlignment==2&&!restored.cellAt(0,0).style.fillEnabled,"transparent merged style survives saving");
+    restored.split(restored.cellAt(0,0).id);expect(restored.cellAt(0,1).style.font==u"宋体"&&restored.cellAt(0,1).style.verticalAlignment==2,"merge snapshots preserve new styles");
+    const auto before=serialize(restored);patch={};patch.verticalAlignment=3;rejects([&]{restored.patchStyle({0,0,1,1},patch);});
+    expect(serialize(restored)==before,"invalid alignment leaves all cells unchanged");
+}
 int main() {
-    try { creation(); geometry(); interaction(); merging(); structure(); persistence(); styling(); sidebarWorkflow(); distribute_selected_tracks(); drag_cell_selection(); std::cout << checks << " checks passed\n"; return 0; }
+    try { transparent_font_and_alignment_styles(); creation(); geometry(); interaction(); merging(); structure(); persistence(); styling(); sidebarWorkflow(); distribute_selected_tracks(); drag_cell_selection(); std::cout << checks << " checks passed\n"; return 0; }
     catch (const std::exception& error) { std::cerr << "FAIL after " << checks << " checks: " << error.what() << '\n'; return 1; }
 }

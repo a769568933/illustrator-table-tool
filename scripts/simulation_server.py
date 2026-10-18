@@ -11,12 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 def simulate(executable, payload):
     action = payload.get('action', 'inspect')
     editing = action in {'edit', 'selectText', 'deleteCluster', 'tab'}
-    if action not in {'create', 'select', 'dragSelect', 'command', 'inspect', 'sample', 'style'} and not editing:
+    if action not in {'create', 'select', 'dragSelect', 'command', 'inspect', 'sample', 'style', 'format'} and not editing:
         raise ValueError('Unknown simulation action')
     args = [str(executable), action]
     if action == 'create':
         args += [str(int(payload.get('rows', 4))), str(int(payload.get('columns', 4)))]
-    elif action in {'select', 'dragSelect', 'command', 'style'}:
+    elif action in {'select', 'dragSelect', 'command', 'style', 'format'}:
         selection = payload.get('selection', [0, 0, 0, 0])
         if len(selection) != 4:
             raise ValueError('Invalid selection')
@@ -24,6 +24,14 @@ def simulate(executable, payload):
         if action == 'command':
             args.append(str(int(payload['command'])))
     standard_input=payload.get('state','')
+    if action == 'format':
+        fields=('font','fontSize','alignment','verticalAlignment','fillEnabled')
+        mask=sum(1<<i for i,key in enumerate(fields) if key in payload)
+        args += [str(mask),str(float(payload.get('fontSize',12))),str(int(payload.get('alignment',0))),str(int(payload.get('verticalAlignment',0))),'1' if payload.get('fillEnabled',False) else '0']
+        font=payload.get('font','')
+        if not isinstance(font,str):
+            raise ValueError('Invalid font')
+        standard_input=f'{len(standard_input.encode("utf-8"))}\n{standard_input}\n{len(font.encode("utf-8"))}\n{font}\n'
     if editing:
         args += [str(int(payload.get(key,0))) for key in ('row','column','anchor','caret')]
         args.append('1' if payload.get('backward',False) else '0')

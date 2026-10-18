@@ -6,6 +6,30 @@
 #include <limits>
 
 namespace table {
+void TableModel::patchStyle(CellRange range,const CellStylePatch& patch){
+    if(range.firstRow>range.lastRow)std::swap(range.firstRow,range.lastRow);
+    if(range.firstColumn>range.lastColumn)std::swap(range.firstColumn,range.lastColumn);
+    cellAt(range.firstRow,range.firstColumn);cellAt(range.lastRow,range.lastColumn);
+    auto next=*this;
+    for(auto& cell:next.anchors){
+        if(cell.row>range.lastRow||cell.column>range.lastColumn||cell.row+cell.rowSpan<=range.firstRow||cell.column+cell.columnSpan<=range.firstColumn)continue;
+        if(cell.row<range.firstRow||cell.column<range.firstColumn||cell.row+cell.rowSpan-1>range.lastRow||cell.column+cell.columnSpan-1>range.lastColumn)
+            throw ValidationError("Style range cannot cut a merged cell");
+        if(patch.font||patch.fontSize||patch.alignment){
+            auto format=materializeFormatting(cell.text,cell.formatting,cell.style);
+            for(auto& run:format.runs){if(patch.font)run.font=*patch.font;if(patch.fontSize)run.fontSize=*patch.fontSize;}
+            if(patch.alignment)for(auto& paragraph:format.paragraphs)paragraph.alignment=*patch.alignment;
+            cell.formatting=std::move(format);
+        }
+        if(patch.font)cell.style.font=*patch.font;
+        if(patch.fontSize)cell.style.fontSize=*patch.fontSize;
+        if(patch.alignment)cell.style.alignment=*patch.alignment;
+        if(patch.verticalAlignment)cell.style.verticalAlignment=*patch.verticalAlignment;
+        if(patch.fillEnabled)cell.style.fillEnabled=*patch.fillEnabled;
+        validateStyle(cell.style);validateFormatting(cell.text,cell.formatting);
+    }
+    *this=std::move(next);
+}
 void validateStyle(const CellStyle& style) {
     for(const auto color:{style.fill,style.border,style.text})
         for(double value:{color.red,color.green,color.blue})
@@ -13,8 +37,9 @@ void validateStyle(const CellStyle& style) {
     if(!std::isfinite(style.fontSize)||style.fontSize<1||style.fontSize>1000||
         !std::isfinite(style.borderWidth)||style.borderWidth<0||style.borderWidth>100||
         !std::isfinite(style.padding)||style.padding<0||style.padding>mm(100)||
-        style.alignment<0||style.alignment>2||style.font.size()>256)
+        style.alignment<0||style.alignment>2||style.verticalAlignment<0||style.verticalAlignment>2||style.font.size()>256)
         throw ValidationError("Invalid cell style");
+    validateText(style.font);
 }
 void TableModel::setStyle(CellRange range,const CellStyle& value) {
     validateStyle(value);

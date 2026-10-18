@@ -33,6 +33,17 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('gridcell',{name:'第4行第4列',exact:true}).dragTo(page.getByRole('gridcell',{name:'第2行第2列',exact:true}));
   await page.getByText('选区：第 2–4 行，第 2–4 列',{exact:true}).waitFor();
   console.log('Mouse drag selects a reversed rectangular cell region');
+  await page.locator('#font').selectOption('Arial');await page.locator('#applyFont').click();
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('[aria-label="第2行第2列"]')).fontFamily.includes('Arial'));
+  await page.getByRole('button',{name:'水平居中',exact:true}).click();
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('[aria-label="第2行第2列"]')).textAlign==='center');
+  await page.getByRole('button',{name:'垂直居中',exact:true}).click();
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('[aria-label="第2行第2列"]')).justifyContent==='center');
+  await page.locator('#transparent').uncheck();
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('[aria-label="第2行第2列"]')).backgroundColor!=='rgba(0, 0, 0, 0)');
+  await page.locator('#transparent').check();
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('[aria-label="第2行第2列"]')).backgroundColor==='rgba(0, 0, 0, 0)');
+  console.log('Selected-cell font, horizontal/vertical alignment and transparency controls passed');
   if(process.env.SIMULATION_SCREENSHOT)await page.screenshot({path:process.env.SIMULATION_SCREENSHOT,fullPage:true});
  }finally{await browser.close();}
 })().catch(e=>{console.error(e.stack);process.exitCode=1;});

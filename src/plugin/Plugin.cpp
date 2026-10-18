@@ -85,6 +85,7 @@ void updateSidebar(State& state,Suites& suites) {
         std::to_wstring(range.firstRow+1)+L"–"+std::to_wstring(range.lastRow+1)+L"，列 "+std::to_wstring(range.firstColumn+1)+L"–"+std::to_wstring(range.lastColumn+1);
     if(state.editor.editing())message+=L"\n格内编辑中，Esc 退出，Tab 切格。";
     state.sidebar.update(true,message);
+    state.sidebar.updateStyle(native.model,range);
 }
 void invalidate(Suites& suites) {
     // Invalidate only on interaction events; never during the draw callback.
@@ -92,7 +93,7 @@ void invalidate(Suites& suites) {
     checked(suites.get<AIAnnotatorSuite>(kAIAnnotatorSuite,kAIAnnotatorVersion)->InvalAnnotationRect(nullptr,&screen));
 }
 void startup(SPMessageData* data,Suites& suites,State& state) {
-    traceStage("plugin.start.0.2.3");
+    traceStage("plugin.start.0.2.4");
     state.basic=data->basic;state.plugin=data->self;
     state.editor.configure(state.basic,state.plugin,EditorHost{
         [&state]()->NativeTable* {return state.active&&*state.active<state.tables.size()?&state.tables[*state.active]:nullptr;},
@@ -106,6 +107,17 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
         }}
     });
     state.sidebar.setBeforeInvoke([&state](){return state.editor.beforeStructure();});
+    state.sidebar.setStyleHandler([&state](const table::CellStylePatch& patch){
+        MutationScope mutation(state);
+        invokeHostCommand(state.basic,state.plugin,[&](Suites& nested){
+            if(!state.active||*state.active>=state.tables.size()||!state.interaction.selection())throw table::ValidationError("No cells selected");
+            if(!state.editor.beforeStructure())return;state.editor.end(false);
+            checked(nested.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state.tool));
+            DocumentAdapter adapter(nested);auto& native=state.tables[*state.active];adapter.synchronize(native);
+            auto model=native.model;model.patchStyle(*state.interaction.selection(),patch);adapter.applyText(native,model);
+            invalidate(nested);updateSidebar(state,nested);
+        });
+    });
     auto menus=suites.get<AIMenuSuite>(kAIMenuSuite,kAIMenuVersion);
     AIPlatformAddMenuItemDataUS parent;parent.groupName=kObjectUtilsMenuGroup;parent.itemText=ai::UnicodeString::FromUTF8("画布表格");
     checked(menus->AddMenuItem(data->self,"IllustratorTableTool.Menu",&parent,0,&state.parent));

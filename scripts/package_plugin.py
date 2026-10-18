@@ -81,7 +81,7 @@ def build_package(plugin, output, readme):
     digest = validate_plugin(plugin)
     documentation = readme.read_bytes()
     output.mkdir(parents=True, exist_ok=True)
-    archive = output / 'IllustratorTableTool-0.2.3-win64.zip'
+    archive = output / 'IllustratorTableTool-0.2.4-win64.zip'
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as zipped:
         zipped.writestr('IllustratorTableTool.aip', plugin.read_bytes())
         zipped.writestr('README.md', documentation)

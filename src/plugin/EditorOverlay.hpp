@@ -11,6 +11,7 @@ struct OverlayFrame {
     std::uint32_t anchor=0,caret=0;
     std::optional<std::pair<std::uint32_t,std::uint32_t>> composition;
     bool showCaret=true;
+    bool backgroundEnabled=true;
 };
-struct OverlayBitmap {std::uint32_t width=0,height=0;std::vector<std::uint8_t> rgb;};
+struct OverlayBitmap {std::uint32_t width=0,height=0;std::vector<std::uint8_t> rgb,png;};
 OverlayBitmap renderEditorOverlay(const OverlayFrame& frame);

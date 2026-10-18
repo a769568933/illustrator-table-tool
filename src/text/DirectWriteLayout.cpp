@@ -96,12 +96,16 @@ public:
                 position+=cluster.length;if(stops.back()!=position)stops.push_back(position);
             }
             if(position!=end)throw ValidationError("Incomplete text cluster mapping");
-            collectOutlines(paragraph.layout.get(),static_cast<float>(toDip(padding)),static_cast<float>(toDip(padding+y)),request.style.text,budget,paths);
             y+=paragraph.height;paragraphs.push_back(std::move(paragraph));
             if(newline==std::u16string::npos)break;
             start=end+1;if(stops.back()!=start)stops.push_back(start);
         }
         overflow=!request.text.empty()&&(overflow||y>height+0.01);
+        const double verticalOffset=std::max(0.0,height-y)*(request.style.verticalAlignment==1?0.5:request.style.verticalAlignment==2?1.0:0.0);
+        for(auto& paragraph:paragraphs){
+            paragraph.y+=verticalOffset;
+            collectOutlines(paragraph.layout.get(),static_cast<float>(toDip(padding)),static_cast<float>(toDip(padding+paragraph.y)),request.style.text,budget,paths);
+        }
         const auto graphemes=graphemeBoundaries(request.text);
         stops.erase(std::remove_if(stops.begin(),stops.end(),[&](auto p){return !std::binary_search(graphemes.begin(),graphemes.end(),p);}),stops.end());
     }

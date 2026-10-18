@@ -168,7 +168,7 @@ void EditController::rebuild(Suites& suites){
     const auto x=std::floor(left),y=std::floor(upper);OverlayFrame frame;frame.layout=layout;
     frame.width=static_cast<std::uint32_t>(std::ceil(right)-x);frame.height=static_cast<std::uint32_t>(std::ceil(lower)-y);
     frame.scaleX=(bottom.x-top.x)/(bounds.right-bounds.left);frame.scaleY=(bottom.y-top.y)/(bounds.bottom-bounds.top);
-    frame.offsetPixels={top.x-x,top.y-y};frame.background=native->model.cellById(selection.cell).style.fill;frame.anchor=display.anchor;frame.caret=display.caret;frame.composition=composition;frame.showCaret=caretVisible;
+    frame.offsetPixels={top.x-x,top.y-y};frame.background=native->model.cellById(selection.cell).style.fill;frame.backgroundEnabled=native->model.cellById(selection.cell).style.fillEnabled;frame.anchor=display.anchor;frame.caret=display.caret;frame.composition=composition;frame.showCaret=caretVisible;
     overlay=renderEditorOverlay(frame);overlayOrigin={static_cast<short>(x),static_cast<short>(y)};
     const auto caret=layout->caret(display.caret);POINT candidate{static_cast<LONG>(std::lround(top.x+caret.left*frame.scaleX+viewToOwner.x)),static_cast<LONG>(std::lround(top.y+caret.bottom*frame.scaleY+viewToOwner.y))};
     if(owner)ClientToScreen(owner,&candidate);input.setCaretScreen(candidate);
@@ -181,6 +181,8 @@ void EditController::refreshView(){
 }
 void EditController::draw(Suites& suites,AIAnnotatorMessage* message){
     if(!session||overlay.rgb.empty()||!message->drawer)return;
-    checked(suites.get<AIAnnotatorDrawerSuite>(kAIAnnotatorDrawerSuite,kAIAnnotatorDrawerVersion)->DrawImage(message->drawer,overlay.rgb.data(),overlay.width,overlay.height,kRGBColorSpace,true,overlayOrigin,false));
+    auto drawer=suites.get<AIAnnotatorDrawerSuite>(kAIAnnotatorDrawerSuite,kAIAnnotatorDrawerVersion);
+    if(!overlay.png.empty())checked(drawer->DrawPNGImageUnscaled(message->drawer,overlay.png.data(),static_cast<ai::uint32>(overlay.png.size()),overlayOrigin));
+    else checked(drawer->DrawImage(message->drawer,overlay.rgb.data(),overlay.width,overlay.height,kRGBColorSpace,true,overlayOrigin,false));
 }
 void EditController::shutdown(){session.reset();host={};input.destroy();overlay={};basic=nullptr;plugin=nullptr;}

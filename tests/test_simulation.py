@@ -13,6 +13,20 @@ spec.loader.exec_module(server)
 
 @unittest.skipUnless(os.environ.get('TABLE_SIMULATOR'), 'Requires compiled table_simulator')
 class SimulationTests(unittest.TestCase):
+    def test_transparent_font_and_alignment_roundtrip(self):
+        executable=Path(os.environ['TABLE_SIMULATOR'])
+        state=server.simulate(executable,{'action':'create','rows':2,'columns':2})
+        try:
+            state=server.simulate(executable,{'action':'format','state':state['state'],'selection':[0,0,0,1],'font':'宋体','fontSize':20,'alignment':1,'verticalAlignment':2,'fillEnabled':False})
+        except ValueError as error:
+            self.fail('Simulator must support selected-cell font, alignment and transparency: '+str(error))
+        self.assertEqual([(c['font'],c['size'],c['alignment'],c['verticalAlignment'],c['fillEnabled']) for c in state['cells'][:2]],[('宋体',20,1,2,False)]*2)
+        restored=server.simulate(executable,{'action':'inspect','state':state['state']})
+        self.assertEqual(restored['state'],state['state'])
+        self.assertEqual(restored['cells'][2]['size'],12)
+        with self.assertRaises(ValueError):
+            server.simulate(executable,{'action':'format','state':state['state'],'selection':[0,0,1,1],'fontSize':20,'alignment':1,'verticalAlignment':3})
+
     def test_edit_chinese_selection_and_roundtrip(self):
         executable=Path(os.environ['TABLE_SIMULATOR'])
         state=server.simulate(executable,{'action':'create','rows':1,'columns':1})

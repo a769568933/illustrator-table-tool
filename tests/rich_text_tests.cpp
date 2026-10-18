@@ -15,7 +15,7 @@ void rich_text_roundtrip() {
     auto m=TableModel::create(1,2,mm(40),mm(10));
     m.setRichText(m.cellAt(0,0).id,u"甲",format(24));
     m.setRichText(m.cellAt(0,1).id,u"乙",format(12));
-    auto data=serialize(m);expect(data.substr(0,5)=="ITT3\n","new model format");
+    auto data=serialize(m);expect(data.substr(0,5)=="ITT4\n","new model format");
     auto copy=deserialize(data);
     expect(copy.cellAt(0,0).text==u"甲","Unicode roundtrip");
     expect(copy.cellAt(0,0).formatting.runs.at(0).fontSize==24,"24pt survives persistence");

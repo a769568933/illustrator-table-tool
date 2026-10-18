@@ -32,6 +32,9 @@ AIErr AIAPI viewArea(AIDocumentViewHandle,AIRealRect* result){*result={0,0,800,6
 AIErr AIAPI image(AIAnnotatorDrawer*,const ai::uint8* pixels,ai::uint32 width,ai::uint32 height,ai::int16,AIBoolean,const AIPoint&,AIBoolean){
     if(!pixels||width==0||height==0)return kBadParameterErr;++images;return kNoErr;
 }
+AIErr AIAPI png(AIAnnotatorDrawer*,const ai::uint8* data,ai::uint32 size,const AIPoint&){
+    if(size<8||std::memcmp(data,"\x89PNG\r\n\x1a\n",8))return kBadParameterErr;++images;return kNoErr;
+}
 SPErr SPAPI acquire(const char* name,ai::int32,const void** result){
 #define SUITE(key,value) if(!std::strcmp(name,key)){*result=&value;return kNoErr;}
     SUITE(kAIAppContextSuite,context) SUITE(kAIUnicodeStringSuite,unicode) SUITE(kSPBlocksSuite,blocks)
@@ -46,7 +49,7 @@ SPErr SPAPI release(const char*,ai::int32){return kNoErr;}
 int main(){try{
     context.DoesAppContextExist=exists;context.PushAppContext=push;context.PopAppContext=pop;context.GetPlatformAppWindow=appWindow;
     art.ValidArt=live;art.GetArtUserAttr=attributes;art.GetArtParent=parent;art.GetArtType=type;art.GetArtFirstChild=child;art.GetArtSibling=sibling;art.GetArtTimeStamp=stamp;
-    document.GetDocument=currentDocument;views.FixedArtworkPointToViewPoint=convert;views.GetDocumentViewBounds=artworkBounds;views.GetDocumentViewVisibleArea=viewArea;drawer.DrawImage=image;
+    document.GetDocument=currentDocument;views.FixedArtworkPointToViewPoint=convert;views.GetDocumentViewBounds=artworkBounds;views.GetDocumentViewVisibleArea=viewArea;drawer.DrawImage=image;drawer.DrawPNGImageUnscaled=png;
     SPBasicSuite basic{};basic.AcquireSuite=acquire;basic.ReleaseSuite=release;
     owner=CreateWindowExW(0,L"STATIC",L"",WS_POPUP,-32000,-32000,1,1,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     if(!owner)throw std::runtime_error("fixture window unavailable");

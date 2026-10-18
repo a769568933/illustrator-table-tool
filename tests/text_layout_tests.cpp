@@ -102,8 +102,27 @@ void performance_records(){
             <<" peakWorkingSetMiB="<<memory.PeakWorkingSetSize/(1024*1024)<<'\n';
     }
 }
+void nine_alignment_positions(){
+    auto base=request(u"A\nB");base.widthPt=180;base.heightPt=120;
+    auto top=layoutText(base);const auto topCaret=top->caret(0);const auto last=top->caret(2);
+    base.style.verticalAlignment=1;auto middle=layoutText(base);base.style.verticalAlignment=2;auto bottom=layoutText(base);
+    const auto dy=bottom->caret(0).top-topCaret.top;
+    expect(dy>50&&std::abs(middle->caret(0).top-topCaret.top-dy/2)<0.01,"vertical center uses half of free space for entire text block");
+    expect(std::abs(bottom->caret(2).top-last.top-dy)<0.01,"all paragraphs receive same vertical shift");
+    expect(std::abs(bottom->outlines().front().contours.front().start.y-top->outlines().front().contours.front().start.y-dy)<0.01,"vector glyphs share vertical offset with caret");
+    for(int vertical=0;vertical<3;++vertical)for(int horizontal=0;horizontal<3;++horizontal){
+        auto r=request(u"AB");r.widthPt=180;r.heightPt=120;r.style.alignment=horizontal;r.style.verticalAlignment=vertical;
+        auto layout=layoutText(r);auto caret=layout->caret(1);
+        expect(layout->hitTest({caret.left,(caret.top+caret.bottom)/2})==1,"nine-position caret hit testing round trips");
+        auto selected=layout->selection(0,1);expect(!selected.empty()&&std::abs(selected.front().top-caret.top)<0.01,"selection and caret agree after alignment");
+        if(horizontal==1)expect(layout->caret(0).left>60,"horizontal center positions text away from left edge");
+        if(horizontal==2)expect(layout->caret(0).left>130,"horizontal right aligns inside cell");
+    }
+    auto large=base;large.heightPt=8;large.style.verticalAlignment=2;
+    auto clipped=layoutText(large);expect(clipped->overflows()&&clipped->caret(0).top>=large.style.padding,"overflow remains top anchored and editable");
+}
 }
 int main(){try{
-    chinese_layout_clusters();edit_joined_cluster_caret();outline_holes_and_curves();mixed_size_and_paragraphs();overflow_and_empty();layout_failure_has_no_output();performance_records();
+    nine_alignment_positions();chinese_layout_clusters();edit_joined_cluster_caret();outline_holes_and_curves();mixed_size_and_paragraphs();overflow_and_empty();layout_failure_has_no_output();performance_records();
     std::cout<<checks<<" layout checks passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
