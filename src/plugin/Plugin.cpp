@@ -128,7 +128,7 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
     checked(annotations->AddAnnotator(data->self,"IllustratorTableTool.Selection",&state.annotator));
     checked(annotations->SetAnnotatorActive(state.annotator,true));
 }
-table::Point local(const NativeTable& t,AIRealPoint p){ return {p.h-t.origin.h,t.origin.v-p.v}; }
+table::Point local(const NativeTable& t,AIRealPoint p){ return {(p.h-t.origin.h)/t.scaleX,(t.origin.v-p.v)/t.scaleY}; }
 void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* message) {
     if(message->tool!=state.tool) return;
     auto annotations=suites.get<AIAnnotatorSuite>(kAIAnnotatorSuite,kAIAnnotatorVersion);
@@ -177,8 +177,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
         if(hit.kind==table::HitKind::Cell && hit.cell==state.lastCell && now-state.lastDown<=GetDoubleClickTime() &&
             std::hypot(point.x-state.lastPoint.x,point.y-state.lastPoint.y)*zoom<=4) {
             state.lastCell=0; state.interaction.cancel();
-            checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedToolByName(kTypeTool));
-            adapter.beginEdit(table,hit.cell); return;
+            return;
         }
         state.lastDown=now; state.lastCell=hit.cell; state.lastPoint=point;
         bool shift=message->event && (message->event->modifiers&aiEventModifiers_shiftKey)!=0;
@@ -216,7 +215,7 @@ void draw(State& state,Suites& suites,AIAnnotatorMessage* message) {
     AIRGBColor blue; blue.red=9000; blue.green=32000; blue.blue=65535;
     drawer->SetColor(message->drawer,blue); drawer->SetLineWidth(message->drawer,1.5);
     auto point=[&](table::Point p) {
-        AIRealPoint artwork{static_cast<AIReal>(table.origin.h+p.x),static_cast<AIReal>(table.origin.v-p.y)};
+        AIRealPoint artwork=table.transform().world(p);
         AIPoint screen{}; checked(views->ArtworkPointToViewPoint(message->view,&artwork,&screen)); return screen;
     };
     if(state.interaction.preview()) {
@@ -339,14 +338,11 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
                 if(index==9) {
                     auto initial=model.cellAt(selection.firstRow,selection.firstColumn).style;
                     auto fonts=adapter.installedFonts();auto style=showCellStyleDialog(initial,fonts);if(!style) return kNoErr;
-                    checked(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)->LoseTextFocus());
                     checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
                     adapter.applyStyle(table,selection,*style);invalidate(suites);updateSidebar(*state,suites);return kNoErr;
                 }
                 if(index<8) model=table::applyCommand(model,selection,static_cast<table::Command>(index));
                 traceStage("command.model.done");
-                checked(suites.get<AIDocumentSuite>(kAIDocumentSuite,kAIDocumentVersion)->LoseTextFocus());
-                traceStage("command.textFocus.released");
                 checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
                 traceStage("command.tool.selected");
                 if(index==8) {adapter.detach(table);state->active.reset();}

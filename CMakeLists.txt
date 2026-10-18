@@ -71,7 +71,7 @@ if(TABLE_BUILD_PLUGIN)
       "${ILLUSTRATOR_SDK_ROOT}/tools/pipl/pipl_gen/template_plugin.json")
   configure_file(resources/Plugin.rc.in "${CMAKE_CURRENT_BINARY_DIR}/Plugin.rc" @ONLY)
   set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/Plugin.rc" PROPERTIES OBJECT_DEPENDS "${PIPL_OUTPUT}")
-  add_library(IllustratorTableTool SHARED src/plugin/Plugin.cpp src/plugin/DocumentAdapter.cpp src/plugin/Dialogs.cpp src/plugin/Sidebar.cpp
+  add_library(IllustratorTableTool SHARED src/plugin/Plugin.cpp src/plugin/DocumentAdapter.cpp src/plugin/VectorArtwork.cpp src/plugin/Dialogs.cpp src/plugin/Sidebar.cpp
     "${ILLUSTRATOR_SDK_ROOT}/illustratorapi/illustrator/IAIUnicodeString.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/Plugin.rc" "${PIPL_OUTPUT}" resources/Plugin.def)
   target_include_directories(IllustratorTableTool PRIVATE
@@ -88,9 +88,9 @@ if(TABLE_BUILD_PLUGIN)
   endif()
   if(BUILD_TESTING)
     add_executable(suite_scope_tests tests/suite_scope_tests.cpp)
-    add_executable(adapter_guard_tests tests/adapter_guard_tests.cpp src/plugin/DocumentAdapter.cpp
+    add_executable(adapter_guard_tests tests/adapter_guard_tests.cpp src/plugin/DocumentAdapter.cpp src/plugin/VectorArtwork.cpp
       "${ILLUSTRATOR_SDK_ROOT}/illustratorapi/illustrator/IAIUnicodeString.cpp")
-    target_link_libraries(adapter_guard_tests PRIVATE user32 table_core)
+    target_link_libraries(adapter_guard_tests PRIVATE user32 table_core table_text)
     get_target_property(SDK_INCLUDE_DIRECTORIES IllustratorTableTool INCLUDE_DIRECTORIES)
     foreach(SDK_TEST_TARGET suite_scope_tests adapter_guard_tests)
       target_include_directories(${SDK_TEST_TARGET} PRIVATE src/plugin ${SDK_INCLUDE_DIRECTORIES})
@@ -102,7 +102,7 @@ if(TABLE_BUILD_PLUGIN)
   endif()
   target_compile_options(IllustratorTableTool PRIVATE /utf-8 /Zp8 /Zc:wchar_t- /Zc:sizedDealloc- /EHsc)
   set_property(TARGET IllustratorTableTool PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-  target_link_libraries(IllustratorTableTool PRIVATE user32 gdi32 comdlg32 table_core)
+  target_link_libraries(IllustratorTableTool PRIVATE user32 gdi32 comdlg32 table_core table_text)
   set_target_properties(IllustratorTableTool PROPERTIES PREFIX "" SUFFIX ".aip"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugin")
 endif()

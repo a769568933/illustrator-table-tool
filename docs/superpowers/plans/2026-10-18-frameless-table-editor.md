@@ -96,7 +96,7 @@
 
 **Interfaces:** `LayoutRequest{std::u16string text; TextFormatting formatting; CellStyle style; double widthPt,heightPt;}`；`TextLayout` 提供 `hitTest(Point)->uint32_t`、`caret(uint32_t)->Rect`、`selection(uint32_t,uint32_t)->std::vector<Rect>`、`boundaries()->std::vector<uint32_t>`、`outlines()->const std::vector<GlyphPath>&`、`overflows()->bool`。`GlyphPath` 含轮廓（起点、直线/三次曲线、封闭标志）、颜色及填充规则。`layoutText(const LayoutRequest&)->std::shared_ptr<const TextLayout>`。
 
-- [ ] 写 `chinese_layout_clusters`、`outline_holes_and_curves`、`pt_dpi_roundtrip`、`layout_failure_has_no_output`：中英文/换行有正确 caret/selection，é 不可拆；“O8中”有轮廓孔洞且有曲线；12pt=16 DIP，25%/100%/400% 映射反算误差小于 0.1pt；缺失字体产生明确替代信息；不可用轮廓及预算不足直接失败。
+- [x] 写 `chinese_layout_clusters`、`outline_holes_and_curves`、`pt_dpi_roundtrip`、`layout_failure_has_no_output`：中英文/换行有正确 caret/selection，é 不可拆；“O8中”有轮廓孔洞且有曲线；12pt=16 DIP，25%/100%/400% 映射反算误差小于 0.1pt；缺失字体产生明确替代信息；不可用轮廓及预算不足直接失败。
 
   ```cpp
   auto layout = layoutText({u"e\u0301",{},CellStyle{},100,40});
@@ -104,10 +104,10 @@
   expect(!layout->outlines().empty(), "direct glyph contours");
   expect(!layout->overflows(), "short text fits");
   ```
-- [ ] 建立不依赖 Adobe SDK 的 `table_text_layout_tests` / CTest `table_text_layout`，Windows CI 在核心作业内编译并运行，确认测试先失败。
-- [ ] 用 DirectWrite layout + 自定义 IDWriteTextRenderer + GetGlyphRunOutline 实现；布局返回确定的 font fallback 及 overflow 信息。混合格式范围用 DirectWrite 范围接口；不按字符逐字绘制，保留字形偏移和连字。枚举可用 Windows 字体供侧栏参数使用，不获取 ATE 字体。
-- [ ] 测试并记录 4×4、20×20 表和 2000 个空格的排版耗时、内存及输出规模；先设单格 32768 UTF-16 单元、32768 字形、250000 曲线段、整表 1000000 段的保守运行预算。该限制只影响新提交，超限拒绝且说明原因；根据记录只可收紧，放宽须重新测试。运行 Windows CTest 全部通过。
-- [ ] 提交：`feat: shape text and generate glyph contours without text frames`。
+- [x] 建立不依赖 Adobe SDK 的 `table_text_layout_tests` / CTest `table_text_layout`，Windows CI 在核心作业内编译并运行，确认测试先失败。
+- [x] 用 DirectWrite layout + 自定义 IDWriteTextRenderer + GetGlyphRunOutline 实现；布局返回确定的 font fallback 及 overflow 信息。混合格式范围用 DirectWrite 范围接口；不按字符逐字绘制，保留字形偏移和连字。枚举可用 Windows 字体供侧栏参数使用，不获取 ATE 字体。
+- [x] 测试并记录 4×4、20×20 表和 2000 个空格的排版耗时、内存及输出规模；先设单格 32768 UTF-16 单元、32768 字形、250000 曲线段、整表 1000000 段的保守运行预算。该限制只影响新提交，超限拒绝且说明原因；根据记录只可收紧，放宽须重新测试。运行 Windows CTest 全部通过。
+- [x] 提交：`feat: shape text and generate glyph contours without text frames`。
 
 ### Task 4：替换 AI 对象适配器并建立零文字框审计
 

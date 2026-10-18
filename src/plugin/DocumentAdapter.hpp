@@ -1,82 +1,48 @@
 #pragma once
-#include "Suites.hpp"
-#include "AIArt.h"
-#include "AIPath.h"
-#include "AIPathStyle.h"
-#include "AITextFrame.h"
-#include "AIDocument.h"
+#include "VectorArtwork.hpp"
 #include "AIUndo.h"
 #include "AIDictionary.h"
 #include "AILayer.h"
-#include "AIFont.h"
-#include "AIATEPaint.h"
-#include "AIColorConversion.h"
 #include "Dialogs.hpp"
-#include "ATESuites.h"
 #include "table/Geometry.hpp"
+#include <map>
 
-struct NativeCell { table::CellId id; AIArtHandle fill; AIArtHandle text; };
+struct NativeCell { table::CellId id; AIArtHandle fill=nullptr,content=nullptr; std::shared_ptr<const table::TextLayout> layout; };
 struct RejectedTable { AIRealRect bounds; std::wstring reason; };
 struct TrackDeletion { bool vertical; int first; int count; };
 struct NativeTable {
     table::TableModel model;
-    AIDocumentHandle document = nullptr;
-    AIArtHandle group = nullptr;
-    AIArtHandle frame = nullptr;
+    AIDocumentHandle document=nullptr;
+    AIArtHandle group=nullptr,frame=nullptr;
     AIRealPoint origin{};
     std::vector<NativeCell> cells;
     std::vector<AIArtHandle> edges;
-    AIArtHandle archive=nullptr;
-    std::vector<NativeCell> snapshots;
+    double scaleX=1,scaleY=1;
+    ArtworkTransform transform()const{return {origin,scaleX,scaleY};}
 };
 class DocumentAdapter {
-    AIArtSuite* art;
-    AIPathSuite* paths;
-    AIPathStyleSuite* styles;
-    AITextFrameSuite* text;
-    AIDocumentSuite* document;
-    AIUndoSuite* undo;
-    ATE::TextRangeSuite* ranges;
-    ATE::CharFeaturesSuite* features;
-    ATE::StorySuite* stories;
-    AIDictionarySuite* dictionaries;
-    AILayerSuite* layers;
-    AIFontSuite* fonts;
-    AIATEPaintSuite* atePaint;
-    AIColorConversionSuite* conversion;
-    ATE::FontSuite* ateFonts;
-    ATE::ApplicationPaintSuite* paints;
-    ATE::ParaFeaturesSuite* paragraphs;
-    ATE::TextFrameSuite* frames;
-    AIRealPoint world(const NativeTable& table, table::Point point) const;
-    void rectangle(AIArtHandle path,const NativeTable& table,table::Rect bounds);
-    void line(AIArtHandle path,const NativeTable& table,const table::Edge& edge);
-    AIArtHandle newPath(AIArtHandle group);
-    void setPaint(AIArtHandle path,bool fill,bool stroke,AIReal gray);
-    void role(AIArtHandle art,const std::string& value);
-    std::string role(AIArtHandle art) const;
+    Suites& suites;
+    AIArtSuite* art;AIPathSuite* paths;AIDocumentSuite* document;AIUndoSuite* undo;AIDictionarySuite* dictionaries;AILayerSuite* layers;
+    VectorArtwork vector;
+    bool rootEditable(const NativeTable& table)const;
+    void role(AIArtHandle object,const std::string& value);
+    std::string role(AIArtHandle object)const;
     void writeModel(const NativeTable& table,const table::TableModel& model);
     NativeTable readTable(AIArtHandle group);
-    void setText(AIArtHandle frame,const std::u16string& value);
-    std::u16string textContent(AIArtHandle frame) const;
-    NativeCell duplicateCell(const NativeCell& source,table::CellId id,AIArtHandle parent,bool snapshot);
-    void formattedText(AIArtHandle destination,const std::vector<AIArtHandle>& sources);
-    NativeCell createCell(const NativeTable& table,const table::Cell& cell);
-    AIColor color(const table::Color& value);
-    void styleCell(const NativeCell& native,const table::CellStyle& style);
+    std::map<table::CellId,std::shared_ptr<const table::TextLayout>> prepare(const table::TableModel& model,const NativeTable* previous);
     void styleEdges(const NativeTable& native,const table::TableModel& model);
-    ATE::FontRef resolveFont(const std::u16string& name);
+    void apply(NativeTable& table,const table::TableModel& model,const char* label);
 public:
     explicit DocumentAdapter(Suites& suites);
     NativeTable createTable(const table::TableModel& model,AIRealPoint origin);
-    bool valid(const NativeTable& table) const;
-    void applyGeometry(NativeTable& table,const table::TableModel& model);
-    void beginEdit(const NativeTable& table,table::CellId id);
-    bool overflows(const NativeCell& cell);
-    std::vector<NativeTable> discoverTables(std::vector<RejectedTable>* rejected=nullptr);
+    bool valid(const NativeTable& table)const;
     void synchronize(NativeTable& table);
+    std::vector<NativeTable> discoverTables(std::vector<RejectedTable>* rejected=nullptr);
+    void applyGeometry(NativeTable& table,const table::TableModel& model);
     void applyStructure(NativeTable& table,const table::TableModel& model,std::optional<TrackDeletion> deletion=std::nullopt);
-    std::vector<FontChoice> installedFonts();
+    void applyText(NativeTable& table,const table::TableModel& model);
     void applyStyle(NativeTable& table,table::CellRange range,const table::CellStyle& style);
+    bool overflows(const NativeCell& cell)const{return cell.layout&&cell.layout->overflows();}
+    std::vector<FontChoice> installedFonts();
     void detach(const NativeTable& table);
 };

@@ -6,10 +6,8 @@
 extern "C" {AIUnicodeStringSuite* sAIUnicodeString=nullptr;SPBlocksSuite* sSPBlocks=nullptr;}
 namespace {
 AIArtSuite art{};AIDocumentSuite document{};
-AIPathSuite paths{};AIPathStyleSuite styles{};AITextFrameSuite text{};AIUndoSuite undo{};
-AIDictionarySuite dictionary{};AILayerSuite layers{};AIFontSuite fonts{};AIATEPaintSuite paint{};AIColorConversionSuite conversion{};
-ATE::TextRangeSuite ranges{};ATE::CharFeaturesSuite features{};ATE::StorySuite stories{};
-ATE::FontSuite ateFonts{};ATE::ApplicationPaintSuite paints{};ATE::ParaFeaturesSuite paragraphs{};ATE::TextFrameSuite frames{};
+AIPathSuite paths{};AIPathStyleSuite styles{};AIUndoSuite undo{};AIGroupSuite groups{};
+AIDictionarySuite dictionary{};AILayerSuite layers{};AIColorConversionSuite conversion{};
 int dictionaryReads=0;
 AIDocumentHandle current=reinterpret_cast<AIDocumentHandle>(1);
 AIErr AIAPI getDocument(AIDocumentHandle* value){*value=current;return kNoErr;}
@@ -18,11 +16,8 @@ AIErr AIAPI readDictionary(AIArtHandle,AIDictionaryRef*) {++dictionaryReads;retu
 SPErr SPAPI acquire(const char* name,ai::int32,const void** result) {
 #define SUITE(key,value) if(std::strcmp(name,key)==0){*result=&value;return kNoErr;}
     SUITE(kAIArtSuite,art) SUITE(kAIDocumentSuite,document) SUITE(kAIPathSuite,paths)
-    SUITE(kAIPathStyleSuite,styles) SUITE(kAITextFrameSuite,text) SUITE(kAIUndoSuite,undo)
-    SUITE(kAIDictionarySuite,dictionary) SUITE(kAILayerSuite,layers) SUITE(kAIFontSuite,fonts)
-    SUITE(kAIATEPaintSuite,paint) SUITE(kAIColorConversionSuite,conversion)
-    SUITE(kTextRangeSuite,ranges) SUITE(kCharFeaturesSuite,features) SUITE(kStorySuite,stories)
-    SUITE(kFontSuite,ateFonts) SUITE(kApplicationPaintSuite,paints) SUITE(kParaFeaturesSuite,paragraphs) SUITE(kTextFrameSuite,frames)
+    SUITE(kAIPathStyleSuite,styles) SUITE(kAIUndoSuite,undo) SUITE(kAIGroupSuite,groups)
+    SUITE(kAIDictionarySuite,dictionary) SUITE(kAILayerSuite,layers) SUITE(kAIColorConversionSuite,conversion)
 #undef SUITE
     return kBadParameterErr;
 }
@@ -33,7 +28,9 @@ std::uintptr_t id(const void* value){return reinterpret_cast<std::uintptr_t>(val
 AIErr AIAPI firstLayer(AILayerHandle* layer){*layer=handle<AILayerHandle>(1);return kNoErr;}
 AIErr AIAPI nextLayer(AILayerHandle,AILayerHandle* layer){*layer=nullptr;return kNoErr;}
 AIErr AIAPI rootArt(AILayerHandle,AIArtHandle* value){*value=handle<AIArtHandle>(10);return kNoErr;}
-AIErr AIAPI artType(AIArtHandle value,short* type){*type=id(value)==31?kPathArt:kGroupArt;return kNoErr;}
+bool forbiddenChild=false;
+AIErr AIAPI artType(AIArtHandle value,short* type){*type=id(value)==31?(forbiddenChild?kTextFrameArt:kPathArt):kGroupArt;return kNoErr;}
+AIBoolean AIAPI liveArt(AIArtHandle,AIBoolean){return true;}
 AIBoolean AIAPI hasDictionary(AIArtHandle value){return id(value)!=10;}
 AIErr AIAPI dictionaryFor(AIArtHandle value,AIDictionaryRef* result){*result=handle<AIDictionaryRef>(id(value));return kNoErr;}
 ai::int32 AIAPI releaseDictionary(AIDictionaryRef){return 0;}
@@ -70,4 +67,10 @@ int main() {
         if(!tables.empty()||decodedGroups!=2) {std::cerr<<"Malformed table prevented independent discovery\n";return 1;}
     } catch(...) {std::cerr<<"Malformed table decoding escaped discovery\n";return 1;}
     std::cout<<"Malformed model and role entries are isolated\n";
+    art.ValidArt=liveArt;
+    try{auditVectorTable(suites,handle<AIArtHandle>(30));}catch(...){std::cerr<<"Vector-only artwork refused\n";return 1;}
+    forbiddenChild=true;bool rejected=false;
+    try{auditVectorTable(suites,handle<AIArtHandle>(30));}catch(...){rejected=true;}
+    if(!rejected){std::cerr<<"Non-vector child escaped recursive audit\n";return 1;}
+    std::cout<<"Recursive audit refuses native text child\n";
 }
