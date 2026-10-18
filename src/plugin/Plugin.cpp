@@ -4,6 +4,8 @@
 #include "Dialogs.hpp"
 #include "Sidebar.hpp"
 #include "Trace.hpp"
+#include "EditController.hpp"
+#include "HostCommand.hpp"
 #ifdef TABLE_HOST_ACCEPTANCE
 #include "HostAcceptance.hpp"
 #include "AITimer.h"
@@ -52,11 +54,14 @@ struct State {
     table::CellId lastCell=0;
     table::Point lastPoint;
     Sidebar sidebar;
+    EditController editor;
+    std::uint64_t generation=1;
     SPBasicSuite* basic=nullptr;
     SPPluginRef plugin=nullptr;
     SPAccessRef access=nullptr;
     AINotifierHandle started=nullptr,shutdown=nullptr;
     AINotifierHandle documentSwitch=nullptr,documentClose=nullptr,artChanged=nullptr;
+    AINotifierHandle viewChanged=nullptr;
     bool mutating=false;
 };
 struct MutationScope {
@@ -87,6 +92,18 @@ void invalidate(Suites& suites) {
 }
 void startup(SPMessageData* data,Suites& suites,State& state) {
     state.basic=data->basic;state.plugin=data->self;
+    state.editor.configure(state.basic,state.plugin,EditorHost{
+        [&state]()->NativeTable* {return state.active&&*state.active<state.tables.size()?&state.tables[*state.active]:nullptr;},
+        [&state](){return state.generation;},
+        [&state](){invokeHostCommand(state.basic,state.plugin,[](Suites& nested){invalidate(nested);});},
+        [&state](const std::wstring& message){state.sidebar.update(state.active.has_value(),message);},
+        [&state](const std::function<void()>& operation){MutationScope scope(state);operation();},
+        [&state](table::CellId id){if(state.active&&*state.active<state.tables.size()){
+            state.interaction.selectCell(state.tables[*state.active].model,id);
+            invokeHostCommand(state.basic,state.plugin,[&state](Suites& nested){updateSidebar(state,nested);});
+        }}
+    });
+    state.sidebar.setBeforeInvoke([&state](){return state.editor.beforeStructure();});
     auto menus=suites.get<AIMenuSuite>(kAIMenuSuite,kAIMenuVersion);
     AIPlatformAddMenuItemDataUS parent;parent.groupName=kObjectUtilsMenuGroup;parent.itemText=ai::UnicodeString::FromUTF8("画布表格");
     checked(menus->AddMenuItem(data->self,"IllustratorTableTool.Menu",&parent,0,&state.parent));
@@ -117,6 +134,7 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
     checked(notifiers->AddNotifier(data->self,"IllustratorTableTool.DocumentSwitch",kAIActiveDocumentWindowAboutToBeChangedNotifier,&state.documentSwitch));
     checked(notifiers->AddNotifier(data->self,"IllustratorTableTool.DocumentClose",kAIDocumentAboutToCloseNotifier,&state.documentClose));
     checked(notifiers->AddNotifier(data->self,"IllustratorTableTool.ArtChanged",kAIArtObjectsChangedNotifier,&state.artChanged));
+    checked(notifiers->AddNotifier(data->self,"IllustratorTableTool.ViewChanged",kAIDocumentViewChangedNotifier,&state.viewChanged));
     checked(suites.get<SPAccessSuite>(kSPAccessSuite,kSPAccessSuiteVersion)->AcquirePlugin(data->self,&state.access));
     AIAddToolData tool;
     tool.title=ai::UnicodeString::FromUTF8("画布表格工具");
@@ -134,6 +152,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
     auto annotations=suites.get<AIAnnotatorSuite>(kAIAnnotatorSuite,kAIAnnotatorVersion);
     if(is(selector,kSelectorAISelectTool)) { state.selectedTool=true; showSidebar(state,suites); invalidate(suites); return; }
     if(is(selector,kSelectorAIDeselectTool)) {
+        state.editor.end(false);
         state.selectedTool=false; state.interaction.cancel(); state.placing=false; invalidate(suites); return;
     }
     DocumentAdapter adapter(suites);
@@ -143,6 +162,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
         state.interaction.cancel(); state.placing=false; invalidate(suites); return;
     }
     if(is(selector,kSelectorAIToolMouseDown)) {
+        if(state.editor.editing()&&!state.editor.beforeStructure())return;
         if(state.placing&&state.pending) {
             auto model=*state.pending;
             state.tables.push_back(adapter.createTable(model,message->cursor));
@@ -159,6 +179,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
             if(table::Geometry::hitTest(table.model,local(table,message->cursor),zoom,3).kind!=table::HitKind::Outside) { state.active=i-1; break; }
         }
         if(!state.active) {
+            state.editor.end(false);
             state.interaction.cancel();state.interaction.clearSelection();invalidate(suites);
             for(const auto& item:rejected) {
                 if(message->cursor.h>=item.bounds.left&&message->cursor.h<=item.bounds.right&&
@@ -170,17 +191,20 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
             return;
         }
         auto& table=state.tables[*state.active];
-        if(oldGroup!=table.group) {state.interaction.clearSelection();state.lastCell=0;}
+        if(oldGroup!=table.group) {state.editor.end(false);state.interaction.clearSelection();state.lastCell=0;}
         auto point=local(table,message->cursor);
         auto hit=table::Geometry::hitTest(table.model,point,zoom,3);
         auto now=GetTickCount64();
         if(hit.kind==table::HitKind::Cell && hit.cell==state.lastCell && now-state.lastDown<=GetDoubleClickTime() &&
             std::hypot(point.x-state.lastPoint.x,point.y-state.lastPoint.y)*zoom<=4) {
             state.lastCell=0; state.interaction.cancel();
+            state.editor.begin(table,hit.cell,point);
             return;
         }
         state.lastDown=now; state.lastCell=hit.cell; state.lastPoint=point;
         bool shift=message->event && (message->event->modifiers&aiEventModifiers_shiftKey)!=0;
+        if(!shift&&hit.kind==table::HitKind::Cell&&state.editor.pointer(table,hit.cell,point,false)){invalidate(suites);return;}
+        if(state.editor.editing())state.editor.end(false);
         state.interaction.pointerDown(table.model,point,shift,zoom);
         invalidate(suites);
     } else if(is(selector,kSelectorAIToolMouseDrag) || is(selector,kSelectorAIToolMouseUp)) {
@@ -188,6 +212,11 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
             state.interaction.cancel(); state.active.reset(); invalidate(suites); return;
         }
         auto& table=state.tables[*state.active];
+        if(state.editor.editing()){
+            const auto point=local(table,message->cursor);const auto hit=table::Geometry::hitTest(table.model,point,zoom,0);
+            if(hit.kind==table::HitKind::Cell)state.editor.pointer(table,hit.cell,point,true);
+            invalidate(suites);return;
+        }
         state.interaction.pointerMove(local(table,message->cursor));
         if(is(selector,kSelectorAIToolMouseUp)) {
             auto result=state.interaction.pointerUp();
@@ -209,7 +238,6 @@ void draw(State& state,Suites& suites,AIAnnotatorMessage* message) {
     if(state.mutating||!state.selectedTool || !state.active || *state.active>=state.tables.size() || !message->drawer) return;
     auto& table=state.tables[*state.active];
     DocumentAdapter adapter(suites); if(!adapter.valid(table)) return;
-    if(!state.interaction.dragging()) adapter.synchronize(table);
     auto views=suites.get<AIDocumentViewSuite>(kAIDocumentViewSuite,kAIDocumentViewVersion);
     auto drawer=suites.get<AIAnnotatorDrawerSuite>(kAIAnnotatorDrawerSuite,kAIAnnotatorDrawerVersion);
     AIRGBColor blue; blue.red=9000; blue.green=32000; blue.blue=65535;
@@ -240,6 +268,7 @@ void draw(State& state,Suites& suites,AIAnnotatorMessage* message) {
             checked(drawer->DrawLine(message->drawer,a,b));
         }
     }
+    state.editor.draw(suites,message);
 }
 }
 extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
@@ -253,11 +282,12 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
             if(is(selector,kSPInterfaceStartupSelector)) {
                 auto* state=new State; data->globals=state;
                 try { startup(data,suites,*state); } catch(...) {
+                    state->editor.shutdown();
                     state->sidebar.destroy(suites);
                     if(state->access) suites.get<SPAccessSuite>(kSPAccessSuite,kSPAccessSuiteVersion)->ReleasePlugin(state->access);
                     delete state;data->globals=nullptr;throw;
                 }
-            } else if(is(selector,kSPInterfaceShutdownSelector)) { delete static_cast<State*>(data->globals);data->globals=nullptr; }
+            } else if(is(selector,kSPInterfaceShutdownSelector)) {auto* state=static_cast<State*>(data->globals);if(state)state->editor.shutdown();delete state;data->globals=nullptr; }
             return kNoErr;
         }
         auto* state=static_cast<State*>(data->globals); if(!state) return kNoErr;
@@ -279,10 +309,12 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
 #endif
             }
             else if((notifier==state->documentSwitch||notifier==state->documentClose)&&!state->mutating) {
+                state->editor.end(false);++state->generation;
                 state->interaction.cancel();state->interaction.clearSelection();state->active.reset();
                 state->tables.clear();state->placing=false;state->pending.reset();state->lastCell=0;
                 state->sidebar.update(false,L"文档已切换或关闭，请重新选择表格。");
             } else if(notifier==state->artChanged&&!state->mutating) {
+                state->editor.end(false);++state->generation;
                 // Keep valid cached tables through native text edits; clear deleted/foreign handles.
                 if(state->active&&*state->active<state->tables.size()) {
                     DocumentAdapter adapter(suites);
@@ -292,11 +324,12 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
                     }
                 }
             }
+            else if(notifier==state->viewChanged&&!state->mutating) {state->editor.refreshView();invalidate(suites);}
             else if(notifier==state->shutdown) {
 #ifdef TABLE_HOST_ACCEPTANCE
                 checked(suites.get<AITimerSuite>(kAITimerSuite,kAITimerVersion)->SetTimerActive(state->acceptanceTimer,false));
 #endif
-                state->sidebar.destroy(suites);
+                state->editor.shutdown();state->sidebar.destroy(suites);
                 if(state->access) {checked(suites.get<SPAccessSuite>(kSPAccessSuite,kSPAccessSuiteVersion)->ReleasePlugin(state->access));state->access=nullptr;}
             }
             return kNoErr;
@@ -304,6 +337,7 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
         if(is(caller,kCallerAIMenu)&&is(selector,kSelectorAIGoMenuItem)) {
             MutationScope operation(*state);
             auto item=static_cast<AIMenuMessage*>(message)->menuItem;
+            if(item!=state->showSidebar&&item!=state->about){if(!state->editor.beforeStructure())return kNoErr;state->editor.end(false);}
 #ifdef TABLE_HOST_ACCEPTANCE
             if(item==state->acceptance) {
                 state->active.reset();state->interaction.clearSelection();state->tables.clear();

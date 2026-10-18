@@ -1,6 +1,6 @@
 # 无文字框表格编辑器 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 沿用 2026-10-16 计划中用户已确认的“在当前对话直接实施”方式；本计划待用户审阅。
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 用户已确认本计划，沿用当前会话直接实施。
 
 **Goal:** 在 Illustrator 28.5 中实现正文底层零文字框的格内编辑，完成模拟与实机验收后交付。
 
@@ -9,6 +9,8 @@
 **Tech Stack:** C++17、Illustrator 2024 Windows SDK、MSVC v142、DirectWrite、Direct2D/WIC、IMM32、CMake、GitHub Actions windows-2022、现有 Python 模拟测试。
 
 **Spec:** `docs/superpowers/specs/2026-10-18-frameless-table-editor-design.md`（用户已批准）。
+
+用户补充：完成后由用户自行进行本地测试。本轮交付为可供本地验收的安装包，不代为安装或操作 Illustrator，不把未运行的输入法、停靠、保存重开、撤销和导出实测标为通过。Task 4/5 的完成表示实现及自动检查完成，宿主实测转入用户测试清单。
 
 ## Global Constraints
 
@@ -115,7 +117,7 @@
 
 **Interfaces:** `NativeCell{id,fill,content}` 的 content 为分组句柄；移除 text/archive/snapshots。保留 createTable、valid、discoverTables、synchronize、applyGeometry、applyStructure、applyStyle、detach 的外部用途；新增 `applyText(NativeTable&,const TableModel&)->void`、`auditVectorTable(Suites&,AIArtHandle)->void`。删除 beginEdit，溢出由 TextLayout 得出。文档键为 `IllustratorTableTool.Model.v3`，角色键与所有权仍严格验证。
 
-- [ ] 写源代码约束测试，禁止产品编译源中 AITextFrame、ATESuites、SetTextFocus、kTypeTool 及文字转曲调用；先在旧实现上确认失败。更新宿主测试：创建“中文 O8”并递归审计全部子对象，`TextFrameArt==0` 且全部类型在许可集合中；只删除 UI 提示不算通过。
+- [x] 写源代码约束测试，禁止产品编译源中 AITextFrame、ATESuites、SetTextFocus、kTypeTool 及文字转曲调用；先在旧实现上确认失败。更新宿主测试：创建“中文 O8”并递归审计全部子对象，`TextFrameArt==0` 且全部类型在许可集合中；只删除 UI 提示不算通过。
 
   ```python
   # test_frameless_source: product_sources comes from the shipping target's source list.
@@ -124,10 +126,10 @@
       for forbidden in ("AITextFrame", "ATESuites", "SetTextFocus", "kTypeTool"):
           self.assertNotIn(forbidden, source, str(path))
   ```
-- [ ] 运行源约束与 `adapter_guards`，确认失败来自旧适配器或尚无矢量内容；开发验收只在新建测试文档运行。
-- [ ] 删除旧原生文字和隐藏快照实现，以 Task 3 轮廓建普通/复合路径并裁切于格内。VectorArtwork 负责坐标/曲线/孔洞/颜色，DocumentAdapter 负责字典/关联/保护/事务；新模型的原格数据是唯一拆分来源。先准备内存内容，再创建替代组，成功后替换；捕获失败调用当前上下文 UndoChanges，重新识别，不能留下新缓存。
-- [ ] 保留并运行过期句柄、关闭文档、锁定隐藏、损坏表隔离测试；注入第 N 条路径创建失败，确认模型字典、原路径和兄弟表均不变，无孤立对象。宿主测试对新建、文字修改、合并拆分、复制、保存重开逐次断言零文字框。
-- [ ] 提交：`refactor: render table contents only as vector artwork`。
+- [x] 运行源约束与 `adapter_guards`，确认失败来自旧适配器或尚无矢量内容；开发验收只在新建测试文档运行。
+- [x] 删除旧原生文字和隐藏快照实现，以 Task 3 轮廓建普通/复合路径并裁切于格内。VectorArtwork 负责坐标/曲线/孔洞/颜色，DocumentAdapter 负责字典/关联/保护/事务；新模型的原格数据是唯一拆分来源。先准备内存内容，再创建替代组，成功后替换；捕获失败调用当前上下文 UndoChanges，重新识别，不能留下新缓存。
+- [x] 保留并运行过期句柄、关闭文档、锁定隐藏、损坏表隔离测试；注入第 N 条路径创建失败，确认模型字典、原路径和兄弟表均不变，无孤立对象。宿主测试对新建、文字修改、合并拆分、复制、保存重开逐次断言零文字框。
+- [x] 提交：`refactor: render table contents only as vector artwork`。
 
 ### Task 5：自定义输入、IME 和瞬时画布预览
 
@@ -135,7 +137,7 @@
 
 **Interfaces:** `InputKind` 枚举为 `Insert, Key, Composition, Commit, Cancel, FocusLost`；`InputEvent{InputKind kind; std::u16string text; uint32_t key,modifiers,compositionStart,compositionLength;}`。`CompositionUpdate{std::u16string preedit,result; uint32_t caret; bool resultAvailable;}`；`CompositionReader` 为 `std::function<CompositionUpdate(HWND,LPARAM)>`，生产默认读取 IMM32，测试可注入已解码结果。`InputWindow::create(HWND owner,std::function<void(const InputEvent&)>,CompositionReader reader={})`、`focus()`、`requestCompositionCommit()->bool`、`cancelComposition()`、`destroy()`。`EditorOverlay::show(const OverlayFrame&)` / `hide()`；OverlayFrame 含屏幕裁切区域、当前 cell layout、caret/selection 和 DPI，坐标已由宿主控制器换算。
 
-- [ ] 写 `custom_window_has_no_edit_children`、`ime_commit_once`、`ime_cancel_keeps_model`、`clipboard_unlock_on_failure`：窗口类名固定 `IllustratorTableTool.Input.v3`，子树无 EDIT/RichEdit；组字结果随后 WM_CHAR 不重复；Esc 只取消组字；剪贴板 Unicode 数据有界且关闭释放。禁止用标准编辑控件作隐藏代理。
+- [x] 写 `custom_window_has_no_edit_children`、`ime_commit_once`、`ime_cancel_keeps_model`、`clipboard_unlock_on_failure`：窗口类名固定 `IllustratorTableTool.Input.v3`，子树无 EDIT/RichEdit；组字结果随后 WM_CHAR 不重复；Esc 只取消组字；剪贴板 Unicode 数据有界且关闭释放。禁止用标准编辑控件作隐藏代理。
 
   ```cpp
   InputWindow input; input.create(nullptr, [](const InputEvent&){});
@@ -145,10 +147,10 @@
   ```
 
   为该测试提供只读 `InputWindow::handle()->HWND`。IME 序列测试通过窗口层的消息解析接口注入已解码的 composition/result，另用真实 IMM32/输入法实测验证读取路径；不能用伪造消息绕过真实输入法关卡。
-- [ ] 注册 Windows CTest `table_input_window`，运行并确认目标行为先失败；消息测试不能代替真实输入法验收。
-- [ ] 自定义 WndProc 处理 WM_CHAR、WM_KEYDOWN、WM_IME_* 与剪贴板；正确处理 ImmGetCompositionStringW 的字节长度和代理项缓存。只发送 InputEvent，不访问 AI SDK。候选窗锚定 caret；结构操作请求提交必须等待结果完成，不能凭调用成功就清空组字。
-- [ ] 瞬时显示使用自定义 owned layered 窗口，Direct2D/WIC 绘制活动格背景、完整文字、组字、光标和选区，不写文档 artwork；复用 Task 3 布局。裁切至格和文档可见区域，避开侧栏；失焦和应用失活隐藏。测试 96/144/192 DPI 及滚动更新，关闭窗口后无定时器、回调或 COM 资源残留。
-- [ ] 运行 Windows 测试并提交：`feat: receive cell input and IME through custom windows`。
+- [x] 注册 Windows CTest `table_input_window`，运行并确认目标行为先失败；消息测试不能代替真实输入法验收。
+- [x] 自定义 WndProc 处理 WM_CHAR、WM_KEYDOWN、WM_IME_* 与剪贴板；正确处理 ImmGetCompositionStringW 的字节长度和代理项缓存。只发送 InputEvent，不访问 AI SDK。候选窗锚定 caret；结构操作请求提交必须等待结果完成，不能凭调用成功就清空组字。
+- [x] 瞬时显示使用自定义 owned layered 窗口，Direct2D/WIC 绘制活动格背景、完整文字、组字、光标和选区，不写文档 artwork；复用 Task 3 布局。裁切至格和文档可见区域，避开侧栏；失焦和应用失活隐藏。测试 96/144/192 DPI 及滚动更新，关闭窗口后无定时器、回调或 COM 资源残留。
+- [x] 运行 Windows 测试并提交：`feat: receive cell input and IME through custom windows`。
 
 ### Task 6：接通格内交互、侧栏和宿主撤销
 

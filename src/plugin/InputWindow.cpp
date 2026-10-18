@@ -43,6 +43,7 @@ void InputWindow::create(HWND parent,std::function<void(const InputEvent&)> targ
 }
 void InputWindow::emit(const InputEvent& event){if(callback)callback(event);}
 void InputWindow::focus(){if(window){ShowWindow(window,SW_SHOWNOACTIVATE);SetFocus(window);}}
+void InputWindow::blur(){if(window){ShowWindow(window,SW_HIDE);if(GetFocus()==window&&owner)SetFocus(owner);}}
 void InputWindow::setCaretScreen(POINT point){
     if(!window)return;if(owner)ScreenToClient(owner,&point);
     SetWindowPos(window,nullptr,point.x,point.y,1,1,SWP_NOZORDER|SWP_NOACTIVATE);

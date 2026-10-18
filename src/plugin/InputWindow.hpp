@@ -28,6 +28,7 @@ public:
     HWND handle()const{return window;}
     bool composing()const{return compositionActive;}
     void focus();
+    void blur();
     void setCaretScreen(POINT point);
     bool requestCompositionCommit();
     void cancelComposition();

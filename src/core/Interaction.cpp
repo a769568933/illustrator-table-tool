@@ -2,6 +2,10 @@
 #include <algorithm>
 
 namespace table {
+void Interaction::selectCell(const TableModel& model,CellId id) {
+    const auto& cell=model.cellById(id);cancel();anchor=id;
+    selected=CellRange{cell.row,cell.column,cell.row+cell.rowSpan-1,cell.column+cell.columnSpan-1};
+}
 void Interaction::pointerDown(const TableModel& model, Point point, bool shift, double zoom) {
     cancel();
     auto hit=Geometry::hitTest(model,point,zoom,3);

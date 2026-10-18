@@ -55,6 +55,7 @@ void Sidebar::invoke(int command) {
     if(busy||command<0||command>=static_cast<int>(commands.size())) return;busy=true;
     for(auto button:buttons) EnableWindow(button,FALSE);
     try {
+        if(beforeInvoke&&!beforeInvoke()) {busy=false;for(std::size_t i=0;i<buttons.size();++i)EnableWindow(buttons[i],i<2||selectionEnabled);return;}
         Suites suites(basic);sSPBlocks=suites.get<SPBlocksSuite>(kSPBlocksSuite,kSPBlocksSuiteVersion);
         sAIUnicodeString=suites.get<AIUnicodeStringSuite>(kAIUnicodeStringSuite,kAIUnicodeStringVersion);
         auto context=suites.get<AIAppContextSuite>(kAIAppContextSuite,kAIAppContextVersion);
@@ -82,6 +83,7 @@ LRESULT CALLBACK Sidebar::procedure(HWND window,UINT message,WPARAM wParam,LPARA
     return CallWindowProcW(self->original,window,message,wParam,lParam);
 }
 void Sidebar::destroy(Suites& suites) {
+    beforeInvoke={};
     if(window&&original) {SetWindowLongPtrW(window,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(original));RemovePropW(window,property);original=nullptr;}
     for(auto& button:buttons) {if(button&&IsWindow(button)) DestroyWindow(button);button=nullptr;}
     if(status&&IsWindow(status)) DestroyWindow(status);status=nullptr;
