@@ -61,6 +61,17 @@ class SimulationTests(unittest.TestCase):
         state=server.simulate(executable,{'action':'command','state':restored['state'],'selection':[0,0,0,1],'command':1})
         self.assertEqual([(c['text'],c['size']) for c in state['cells']],[('甲',12),('乙',18)])
 
+    def test_drag_select_cells_without_modifying_model(self):
+        executable=Path(os.environ['TABLE_SIMULATOR'])
+        state=server.simulate(executable,{'action':'create','rows':4,'columns':4})
+        state=server.simulate(executable,{'action':'command','state':state['state'],'selection':[1,1,2,2],'command':0})
+        selected=server.simulate(executable,{'action':'dragSelect','state':state['state'],'selection':[0,0,1,1]})
+        self.assertEqual(selected['selection'],[0,0,2,2])
+        self.assertEqual(selected['state'],state['state'])
+        selected=server.simulate(executable,{'action':'dragSelect','state':state['state'],'selection':[3,3,0,0]})
+        self.assertEqual(selected['selection'],[0,0,3,3])
+        self.assertEqual(selected['state'],state['state'])
+
     def test_distribute_commands_preserve_merged_table(self):
         executable=Path(os.environ['TABLE_SIMULATOR'])
         state=server.simulate(executable,{'action':'create','rows':3,'columns':3})

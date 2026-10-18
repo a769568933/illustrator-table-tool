@@ -67,10 +67,12 @@ int main(int argc,char** argv) {
             }
             const auto& active=model.cellById(editor->cell);selected={active.row,active.column,active.row+active.rowSpan-1,active.column+active.columnSpan-1};
         }
-        if(action=="select") {
+        if(action=="select"||action=="dragSelect") {
             auto center=[&](int r,int c){auto b=Geometry::cellBounds(model,model.cellAt(r,c).id);return Point{(b.left+b.right)/2,(b.top+b.bottom)/2};};
             Interaction interaction;interaction.pointerDown(model,center(selected.firstRow,selected.firstColumn),false,1);
-            interaction.pointerDown(model,center(selected.lastRow,selected.lastColumn),true,1);selected=*interaction.selection();
+            if(action=="dragSelect"){interaction.pointerMove(center(selected.lastRow,selected.lastColumn));interaction.pointerUp();}
+            else interaction.pointerDown(model,center(selected.lastRow,selected.lastColumn),true,1);
+            selected=*interaction.selection();
         } else if(action=="command") {
             if(argc!=7) throw ValidationError("Missing structural command");
             const auto command=static_cast<Command>(integer(argv[6]));

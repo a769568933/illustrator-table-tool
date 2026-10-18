@@ -92,6 +92,7 @@ void invalidate(Suites& suites) {
     checked(suites.get<AIAnnotatorSuite>(kAIAnnotatorSuite,kAIAnnotatorVersion)->InvalAnnotationRect(nullptr,&screen));
 }
 void startup(SPMessageData* data,Suites& suites,State& state) {
+    traceStage("plugin.start.0.2.2");
     state.basic=data->basic;state.plugin=data->self;
     state.editor.configure(state.basic,state.plugin,EditorHost{
         [&state]()->NativeTable* {return state.active&&*state.active<state.tables.size()?&state.tables[*state.active]:nullptr;},
@@ -153,6 +154,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
     auto annotations=suites.get<AIAnnotatorSuite>(kAIAnnotatorSuite,kAIAnnotatorVersion);
     if(is(selector,kSelectorAISelectTool)) { state.selectedTool=true; showSidebar(state,suites); invalidate(suites); return; }
     if(is(selector,kSelectorAIDeselectTool)) {
+        if(state.editor.editing())traceStage("edit.exit.tool-deselected");
         state.editor.end(false);
         state.selectedTool=false; state.interaction.cancel(); state.placing=false; invalidate(suites); return;
     }
@@ -210,6 +212,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
         state.interaction.pointerDown(table.model,point,shift,zoom,table.scaleX,table.scaleY);
         invalidate(suites);
     } else if(is(selector,kSelectorAIToolMouseDrag) || is(selector,kSelectorAIToolMouseUp)) {
+        if(is(selector,kSelectorAIToolMouseDrag))state.lastCell=0;
         if(!state.active || *state.active>=state.tables.size() || !adapter.valid(state.tables[*state.active])) {
             state.interaction.cancel(); state.active.reset(); invalidate(suites); return;
         }
@@ -311,11 +314,13 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
 #endif
             }
             else if((notifier==state->documentSwitch||notifier==state->documentClose)&&!state->mutating) {
+                if(state->editor.editing())traceStage(notifier==state->documentSwitch?"edit.exit.document-switch":"edit.exit.document-close");
                 state->editor.end(false);++state->generation;
                 state->interaction.cancel();state->interaction.clearSelection();state->active.reset();
                 state->tables.clear();state->placing=false;state->pending.reset();state->lastCell=0;
                 state->sidebar.update(false,L"文档已切换或关闭，请重新选择表格。");
             } else if(notifier==state->artChanged&&!state->mutating) {
+                if(state->editor.editing())traceStage("edit.exit.art-changed");
                 state->editor.end(false);++state->generation;
                 // Keep valid cached tables through native text edits; clear deleted/foreign handles.
                 if(state->active&&*state->active<state->tables.size()) {

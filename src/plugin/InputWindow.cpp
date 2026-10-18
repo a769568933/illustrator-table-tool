@@ -1,4 +1,5 @@
 #include "InputWindow.hpp"
+#include "Trace.hpp"
 #include <imm.h>
 #include <algorithm>
 
@@ -78,7 +79,7 @@ void InputWindow::character(char16_t value){
 }
 LRESULT InputWindow::message(UINT message,WPARAM wParam,LPARAM lParam){
     switch(message){
-    case deferredFocus:if(focusRequested){focusRequested=false;ShowWindow(window,SW_SHOWNOACTIVATE);SetFocus(window);if(GetFocus()!=window)emit({InputKind::Error,u"无法进入文字编辑，请重新双击单元格。"});}return 0;
+    case deferredFocus:if(focusRequested){focusRequested=false;traceStage("input.focus.dispatch");ShowWindow(window,SW_SHOWNOACTIVATE);SetFocus(window);if(GetFocus()!=window){traceStage("input.focus.failed");emit({InputKind::Error,u"无法进入文字编辑，请重新双击单元格。"});}else traceStage("input.focus.ready");}return 0;
     case WM_GETDLGCODE:return DLGC_WANTCHARS|DLGC_WANTARROWS|DLGC_WANTTAB|DLGC_WANTALLKEYS;
     case WM_ERASEBKGND:return 1;
     case WM_PAINT:{PAINTSTRUCT paint{};BeginPaint(window,&paint);EndPaint(window,&paint);return 0;}
@@ -91,7 +92,7 @@ LRESULT InputWindow::message(UINT message,WPARAM wParam,LPARAM lParam){
     }
     case WM_IME_ENDCOMPOSITION:if(compositionActive&&!commitPending){compositionActive=false;emit({InputKind::Cancel,{}});}return 0;
     case WM_IME_CHAR:return 0;
-    case WM_CHAR:if(!compositionActive)character(static_cast<char16_t>(wParam));return 0;
+    case WM_CHAR:traceStage("input.character.received");if(!compositionActive)character(static_cast<char16_t>(wParam));return 0;
     case WM_UNICHAR:
         if(wParam==UNICODE_NOCHAR)return TRUE;
         if(wParam>0x10ffff)throw table::ValidationError("Invalid input code point");
@@ -103,7 +104,8 @@ LRESULT InputWindow::message(UINT message,WPARAM wParam,LPARAM lParam){
         emit({InputKind::Key,{},static_cast<std::uint32_t>(wParam),mods});return 0;
     }
     case WM_PASTE:pasteText();return 0;
-    case WM_KILLFOCUS:pendingHigh=0;emit({InputKind::FocusLost,{}});return 0;
+    case WM_SETFOCUS:traceStage("input.focus.gained");break;
+    case WM_KILLFOCUS:traceStage("input.focus.lost");pendingHigh=0;emit({InputKind::FocusLost,{}});return 0;
     case WM_TIMER:if(wParam==1)emit({InputKind::Blink,{}});return 0;
     }
     return DefWindowProcW(window,message,wParam,lParam);

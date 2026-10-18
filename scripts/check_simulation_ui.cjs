@@ -30,6 +30,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.getByRole('button',{name:'平均列宽',exact:true}).click();
   await page.getByText('选区：第 1–3 行，第 1–3 列',{exact:true}).waitFor();
   console.log('Sidebar distribution commands retain the selected region');
+  await page.getByRole('gridcell',{name:'第4行第4列',exact:true}).dragTo(page.getByRole('gridcell',{name:'第2行第2列',exact:true}));
+  await page.getByText('选区：第 2–4 行，第 2–4 列',{exact:true}).waitFor();
+  console.log('Mouse drag selects a reversed rectangular cell region');
   if(process.env.SIMULATION_SCREENSHOT)await page.screenshot({path:process.env.SIMULATION_SCREENSHOT,fullPage:true});
  }finally{await browser.close();}
 })().catch(e=>{console.error(e.stack);process.exitCode=1;});

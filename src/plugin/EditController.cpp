@@ -40,7 +40,7 @@ void EditController::begin(NativeTable& native,table::CellId id,table::Point poi
         checked(suites.get<AIDocumentViewSuite>(kAIDocumentViewSuite,kAIDocumentViewVersion)->FixedArtworkPointToViewPoint(nullptr,&artwork,&viewPoint));
         POINT cursor{};if(!GetCursorPos(&cursor))throw table::ValidationError("Cannot locate editor caret");if(owner)ScreenToClient(owner,&cursor);
         viewToOwner={cursor.x-viewPoint.h,cursor.y-viewPoint.v};
-        host.selectCell(id);rebuild(suites);traceStage("edit.preview.ready");input.focus();traceStage("edit.focus.queued");host.invalidate();
+        host.selectCell(id);rebuild(suites);traceStage(overlay.rgb.empty()?"edit.preview.empty":"edit.preview.ready");input.focus();traceStage("edit.focus.queued");host.invalidate();
     });
 }
 bool EditController::pointer(NativeTable& native,table::CellId id,table::Point point,bool extend){
@@ -59,6 +59,7 @@ bool EditController::beforeStructure(){
     return !inputFailure;
 }
 void EditController::end(bool commitComposition){
+    if(session)traceStage("edit.session.end");
     if(commitComposition&&!beforeStructure())return;
     session.reset();preediting=false;preedit.clear();batchOpen=false;inputFailure=false;overlay={};input.cancelComposition();input.blur();if(host.invalidate)host.invalidate();
 }
@@ -142,7 +143,8 @@ void EditController::handleWithContext(Suites& suites,const InputEvent& event){
 void EditController::handle(const InputEvent& event){
     if(!session||!basic)return;
     try{host.mutation([&]{invokeHostCommand(basic,plugin,[&](Suites& suites){handleWithContext(suites,event);});});}
-    catch(...){inputFailure=true;batchOpen=false;host.status(L"操作未完成，原表数据已保留。请按 Esc 退出编辑后重新选择单元格。");}
+    catch(const std::exception& error){traceStage("edit.callback.failed");traceStage(error.what());inputFailure=true;batchOpen=false;host.status(L"操作未完成。请按 Esc 退出编辑后重新选择单元格。");}
+    catch(...){traceStage("edit.callback.sdk-failed");inputFailure=true;batchOpen=false;host.status(L"操作未完成。请按 Esc 退出编辑后重新选择单元格。");}
 }
 void EditController::rebuild(Suites& suites){
     auto native=current(suites);if(!native)return;const auto selection=session->selection();const auto bounds=table::Geometry::cellBounds(native->model,selection.cell);
@@ -158,10 +160,10 @@ void EditController::rebuild(Suites& suites){
     auto views=suites.get<AIDocumentViewSuite>(kAIDocumentViewSuite,kAIDocumentViewVersion);
     auto convert=[&](table::Point point){auto artwork=native->transform().world(point);AIRealPoint view{};checked(views->FixedArtworkPointToViewPoint(nullptr,&artwork,&view));return table::Point{view.h,view.v};};
     const auto top=convert({bounds.left,bounds.top}),bottom=convert({bounds.right,bounds.bottom});
-    AIRealRect visible{};checked(views->GetDocumentViewVisibleArea(nullptr,&visible));AIRealPoint viewFirst{},viewLast{};AIRealPoint a{visible.left,visible.top},b{visible.right,visible.bottom};
+    AIRealRect visible{};checked(views->GetDocumentViewBounds(nullptr,&visible));AIRealPoint viewFirst{},viewLast{};AIRealPoint a{visible.left,visible.top},b{visible.right,visible.bottom};
     checked(views->FixedArtworkPointToViewPoint(nullptr,&a,&viewFirst));checked(views->FixedArtworkPointToViewPoint(nullptr,&b,&viewLast));
-    const double left=std::max(top.x,static_cast<double>(viewFirst.h)),right=std::min(bottom.x,static_cast<double>(viewLast.h));
-    const double upper=std::max(top.y,static_cast<double>(viewFirst.v)),lower=std::min(bottom.y,static_cast<double>(viewLast.v));
+    const double left=std::max(top.x,static_cast<double>(std::min(viewFirst.h,viewLast.h))),right=std::min(bottom.x,static_cast<double>(std::max(viewFirst.h,viewLast.h)));
+    const double upper=std::max(top.y,static_cast<double>(std::min(viewFirst.v,viewLast.v))),lower=std::min(bottom.y,static_cast<double>(std::max(viewFirst.v,viewLast.v)));
     if(right<=left||lower<=upper){overlay={};return;}
     const auto x=std::floor(left),y=std::floor(upper);OverlayFrame frame;frame.layout=layout;
     frame.width=static_cast<std::uint32_t>(std::ceil(right)-x);frame.height=static_cast<std::uint32_t>(std::ceil(lower)-y);

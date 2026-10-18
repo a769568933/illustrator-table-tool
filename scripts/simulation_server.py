@@ -11,12 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 def simulate(executable, payload):
     action = payload.get('action', 'inspect')
     editing = action in {'edit', 'selectText', 'deleteCluster', 'tab'}
-    if action not in {'create', 'select', 'command', 'inspect', 'sample', 'style'} and not editing:
+    if action not in {'create', 'select', 'dragSelect', 'command', 'inspect', 'sample', 'style'} and not editing:
         raise ValueError('Unknown simulation action')
     args = [str(executable), action]
     if action == 'create':
         args += [str(int(payload.get('rows', 4))), str(int(payload.get('columns', 4)))]
-    elif action in {'select', 'command', 'style'}:
+    elif action in {'select', 'dragSelect', 'command', 'style'}:
         selection = payload.get('selection', [0, 0, 0, 0])
         if len(selection) != 4:
             raise ValueError('Invalid selection')
