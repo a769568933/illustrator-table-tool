@@ -16,8 +16,19 @@
 
 本机核心 280 项、排版 84 项、输入和预览 51 项通过。8 个后端模拟用例通过，包含既有 480 次结构操作和新字体／透明／对齐保存往返。独立浏览器检查实际点击字体、水平居中、垂直居中及透明开关，既有双击输入、Tab、拖选与平均分布仍通过。
 
-原生编译、独立代码审查及安装包校验待完成后补充。真实 Illustrator 中的侧栏外观、透明叠放、字体选择、IME 预览、撤销和保存重开仍由用户验收，不能用上述自动结果代替。
+真实 Illustrator 中的侧栏外观、透明叠放、字体选择、IME 预览、撤销和保存重开仍由用户验收，不能用上述自动结果代替。
 
 独立审查发现透明预览不能擦除底层已发布的字形，选中文字进行 IME 替换时会叠字。新增真实 EditController 的 SDK 回归先在构建 39104289225 失败：`Transparent composition must keep published glyphs unchanged and delegate preedit to IME UI`。修正为透明格使用系统 IME 组合窗口并保持已确认字形／选择，结果确认时只写入一次；有底色格沿用格内预览。模式在会话进入或切格时设置，组字中禁止切换，退出重置，WM_IME_SETCONTEXT 按模式显示或隐藏系统组合窗口，WM_IME_CHAR 仍吞掉以避免重复提交。回归覆盖多行原文全选替换／重排、取消，以及两种模式的单次提交。
 
 审查的三项 Minor 亦已处理：混合字体、字号和段落对齐按实际富文本统计；侧栏样式操作使用正确的撤销标签；浏览器编辑层使用当前字体和对齐，不再进入编辑即跳回左上角。系统组合窗口转发依据 [Microsoft WM_IME_COMPOSITION](https://learn.microsoft.com/en-us/windows/win32/intl/wm-ime-composition) 与 [WM_IME_SETCONTEXT](https://learn.microsoft.com/en-us/windows/win32/intl/wm-ime-setcontext) 文档。
+
+## 编译与安装
+
+最终构建 [39104508679](https://github.com/a769568933/illustrator-table-tool/actions/runs/39104508679)，源码 `adbb7b3ad494be10d02ea5d790b15a341ee0a97d`（本地 `2c81f9d`），10 个 CTest 全部通过，包含新增透明 IME 替换／重排与取消回归。8 个后端模拟用例在前置核心作业实际通过；原生包检查跳过的 8 个模拟用例未重复计为通过。
+
+下载后核对外层 GitHub artifact、内层 ZIP 和内部文件 SHA-256，核对 x64 PE、PluginMain、PiPL、版本及未包含自动实机验收入口。
+
+- ZIP SHA-256：`c770c6d73df61236ca7d5f42f316be92318df8133aaf1ee12ad55938c43022e5`
+- AIP SHA-256：`b24eec1d5c6efc2ffa95f4ffe03e4d0047f5600f8202987396a5713a10daac3c`
+
+确认 AI 未运行后已安装到原有 `dist/loading-probe`，替换后版本、摘要符合上述结果，目录只有一份 AIP。0.2.3 备份到项目 `.local/plugin-backups/before-0.2.4-1792305421`。未启动或操作 AI，未宣称真实输入法或侧栏已验收。
