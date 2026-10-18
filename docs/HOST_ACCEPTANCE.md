@@ -6,6 +6,12 @@
 
 新版完全替换旧文字框实现：正文保存在表格数据中，DirectWrite 在内存排版并直接提取字形路径，文档只保存矢量组、路径和裁切。输入窗口为自定义 Windows 类，不使用 EDIT / RichEdit。编辑预览为临时辅助显示，不写入文档。
 
+最终本地测试包构建：[39086997908](https://github.com/a769568933/illustrator-table-tool/actions/runs/39086997908)，源码 `2e8ded961cf3b2f9bf3290e6082de7798668ddcf`（本地对应 `15e644e`）。核心作业 6/6 CTest、5 个模拟测试通过，原生作业 9/9 CTest 和 PE/打包检查通过。打包作业跳过了没有设置模拟器路径的 5 个模拟用例，它们已在前置核心作业实际运行；未把 skip 计为通过。
+
+包名 `IllustratorTableTool-0.2.0-win64.zip`，SHA-256：`3ef6da9a7ee2804e65f2aaa318c4319594c655fa38ee95836352cc3e3adf47ca`。AIP SHA-256：`3d4be9c7dbbdc4b3fa7c9392409f58830960d4666658a0c67d140ec56a954746`。下载后已校验 GitHub 外层 artifact 摘要、ZIP 摘要、内部 AIP/README 摘要、x64 PE、PluginMain、PiPL、版本 0.2.0，确认没有开发自动验收入口。包内仅 AIP、README、SHA256SUMS，不含 SDK。
+
+最终审查的组合字符接合光标、组字下划线、嵌套字形锁定/隐藏和缩放命中问题已补充回归并修复。锁定/隐藏用例先在构建 39086821951 真实失败，再在上述最终构建通过。取舍及待测边界见 `docs/IMPLEMENTATION_DECISIONS.md`。
+
 已运行的自动检查：
 
 - Windows 原生构建的 9 个 CTest 目标涵盖核心、富文本、编辑、会话、字形排版、自定义输入和预览、套件作用域、对象保护、宿主上下文。接通版本构建：[39085639101](https://github.com/a769568933/illustrator-table-tool/actions/runs/39085639101)。

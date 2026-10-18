@@ -194,10 +194,10 @@
   self.assertEqual(state["cells"][0]["text"], "表格\n123")
   self.assertEqual(state["editor"]["caret"], 2)
   ```
-- [ ] 实现模拟动作并运行 `python -m unittest discover -s tests -p 'test_*.py' -v`，保留既有 480 次结构往返，新增编辑流程；运行云端核心、Windows、SDK、零文字框源约束、PE 和包校验，记录实际 run、SHA 和日志。
+- [x] 实现模拟动作并运行 `python -m unittest discover -s tests -p 'test_*.py' -v`，保留既有 480 次结构往返，新增编辑流程；运行云端核心、Windows、SDK、零文字框源约束、PE 和包校验，记录实际 run、SHA 和日志。最终构建 39086997908 全部通过，详见 HOST_ACCEPTANCE。
 - [ ] 安装前读取最新应用状态，AI 正在运行时不替换已加载文件。仅在新建测试文档验收：搜狗/微软拼音候选确认取消、拖选、剪贴板、Tab、末格增行、侧栏合并拆分增删、停靠、25%/100%/400%、撤销重做、整表移动缩放、RGB/CMYK、锁定隐藏/坏表保护。对无法由桌面工具证明的项目明确待验证，请用户只协助该具体操作，不记为通过。
 - [ ] 保存 AI、关闭重开再改字/拆分/复制，审计隐藏对象仍零文字框；导出 PDF 并检查轮廓孔洞、裁切、印刷外观和无辅助显示。文档落点使用当前画板可见范围，避免旧验收表落到屏幕外。模拟通过或自动 SDK 通过都不能替代 IME/停靠/导出目测。
-- [ ] 全部关卡通过后更新版本为 0.2.0，README 写明输入方式、兼容边界和 PDF 轮廓限制；正式包关闭 TABLE_HOST_ACCEPTANCE 并复验加载。提交 `feat: validate and package frameless table editor`，交付 AIP ZIP、SHA-256、构建链接与实际验收记录；未通过的功能不得宣称完成。
+- [x] 按用户补充交付 0.2.0 本地测试版：README 写明输入方式、兼容边界和 PDF 轮廓限制，包关闭 TABLE_HOST_ACCEPTANCE；交付 AIP ZIP、SHA-256、构建链接与实际验证记录。上面两项实机步骤由用户执行，未安装、未验收加载，不宣称成品实机通过。
 
 ## 自审与执行交接
 
