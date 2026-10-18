@@ -2,6 +2,8 @@
 #include "table/Serialization.hpp"
 #include "table/Geometry.hpp"
 #include "table/Interaction.hpp"
+#include "table/TextEditor.hpp"
+#include "table/RichText.hpp"
 #include <iostream>
 #include <iterator>
 #include <sstream>
@@ -25,20 +27,46 @@ std::string jsonText(const std::u16string& text) {
 int integer(const char* input) {
     std::size_t used=0;int value=std::stoi(input,&used);if(input[used]) throw table::ValidationError("Invalid number");return value;
 }
+std::string block(std::istream& stream,std::size_t maximum){
+    std::string count;std::getline(stream,count);std::size_t used=0;const auto size=std::stoull(count,&used);
+    if(used!=count.size()||size>maximum)throw table::ValidationError("Invalid text block size");
+    std::string result(static_cast<std::size_t>(size),0);
+    if(!stream.read(result.data(),static_cast<std::streamsize>(size))||stream.get()!='\n')throw table::ValidationError("Incomplete text block");return result;
+}
 }
 int main(int argc,char** argv) {
     try {
         using namespace table;
         if(argc<2) throw ValidationError("Missing simulation command");
         const std::string action=argv[1];
+        const bool editing=action=="edit"||action=="selectText"||action=="deleteCluster"||action=="tab";
         std::string input;
         if(action!="create") {
             input.assign(std::istreambuf_iterator<char>(std::cin),{});
-            if(input.size()>16*1024*1024) throw ValidationError("Simulation input exceeds limit");
+            if(input.size()>(editing?20:16)*1024*1024) throw ValidationError("Simulation input exceeds limit");
         }
-        auto model=action=="create" ? TableModel::create(argc>2?integer(argv[2]):4,argc>3?integer(argv[3]):4,mm(120),mm(60)) : deserialize(input);
+        std::string inserted;std::vector<std::uint32_t> boundaries;
+        if(editing){std::istringstream protocol(input);input=block(protocol,16*1024*1024);inserted=block(protocol,maximumTextBytes);
+            std::uint64_t boundary=0;while(protocol>>boundary){if(boundary>maximumTextBytes||boundaries.size()>maximumTextBytes)throw ValidationError("Invalid text boundary");boundaries.push_back(static_cast<std::uint32_t>(boundary));}
+            if(!protocol.eof())throw ValidationError("Invalid text boundary data");}
+        const int rows=action=="create"&&argc>2?integer(argv[2]):4,columns=action=="create"&&argc>3?integer(argv[3]):4;
+        auto model=action=="create" ? TableModel::create(rows,columns,std::max(mm(120),columns*minimumTrack),std::max(mm(60),rows*minimumTrack)) : deserialize(input);
         CellRange selected{0,0,0,0};
-        if(argc>=6) selected={integer(argv[2]),integer(argv[3]),integer(argv[4]),integer(argv[5])};
+        std::optional<EditSession> editor;
+        if(!editing&&argc>=6) selected={integer(argv[2]),integer(argv[3]),integer(argv[4]),integer(argv[5])};
+        if(editing){
+            if(argc!=7)throw ValidationError("Missing text edit selection");
+            const int anchor=integer(argv[4]),caret=integer(argv[5]);if(anchor<0||caret<0)throw ValidationError("Invalid text selection");
+            const auto& cell=model.cellAt(integer(argv[2]),integer(argv[3]));EditSession session{cell.id,static_cast<std::uint32_t>(anchor),static_cast<std::uint32_t>(caret),0};
+            if(action=="selectText"){
+                if(!isTextBoundary(cell.text,session.anchor)||!isTextBoundary(cell.text,session.caret))throw ValidationError("Invalid text selection");editor=session;
+            }else{
+                auto change=action=="edit"?replaceSelection(model,session,decodeUtf8(inserted)):
+                    action=="tab"?navigateCell(model,session,integer(argv[6])!=0):eraseCluster(model,session,boundaries,integer(argv[6])!=0);
+                model=std::move(change.model);editor=change.session;
+            }
+            const auto& active=model.cellById(editor->cell);selected={active.row,active.column,active.row+active.rowSpan-1,active.column+active.columnSpan-1};
+        }
         if(action=="select") {
             auto center=[&](int r,int c){auto b=Geometry::cellBounds(model,model.cellAt(r,c).id);return Point{(b.left+b.right)/2,(b.top+b.bottom)/2};};
             Interaction interaction;interaction.pointerDown(model,center(selected.firstRow,selected.firstColumn),false,1);
@@ -53,17 +81,22 @@ int main(int argc,char** argv) {
         } else if(action=="style") {
             auto style=model.cellAt(selected.firstRow,selected.firstColumn).style;
             style.fill={1,0.92,0.70};style.fontSize=18;model.setStyle(selected,style);
-        } else if(action!="inspect"&&action!="create") throw ValidationError("Unknown simulation command");
+        } else if(action!="inspect"&&action!="create"&&!editing) throw ValidationError("Unknown simulation command");
         std::cout<<"{\"state\":"<<json(serialize(model))<<",\"rows\":"<<model.rows()<<",\"columns\":"<<model.columns()
             <<",\"width\":"<<model.width()<<",\"height\":"<<model.height()<<",\"selection\":["<<selected.firstRow<<','<<selected.firstColumn<<','<<selected.lastRow<<','<<selected.lastColumn<<"],\"cells\":[";
         bool first=true;
         for(const auto& cell:model.cells()) {
             if(!first) std::cout<<',';first=false;
             auto b=Geometry::cellBounds(model,cell.id);
-            std::cout<<"{\"row\":"<<cell.row<<",\"column\":"<<cell.column<<",\"rowSpan\":"<<cell.rowSpan<<",\"columnSpan\":"<<cell.columnSpan
+            std::cout<<"{\"id\":"<<cell.id<<",\"row\":"<<cell.row<<",\"column\":"<<cell.column<<",\"rowSpan\":"<<cell.rowSpan<<",\"columnSpan\":"<<cell.columnSpan
                 <<",\"x\":"<<b.left<<",\"y\":"<<b.top<<",\"width\":"<<b.right-b.left<<",\"height\":"<<b.bottom-b.top
-                <<",\"text\":"<<jsonText(cell.text)<<",\"size\":"<<cell.style.fontSize<<",\"fill\":["<<cell.style.fill.red<<','<<cell.style.fill.green<<','<<cell.style.fill.blue<<"]}";
+                <<",\"text\":"<<jsonText(cell.text)<<",\"size\":"<<cell.style.fontSize<<",\"fill\":["<<cell.style.fill.red<<','<<cell.style.fill.green<<','<<cell.style.fill.blue<<"],\"runs\":[";
+            bool firstRun=true;for(const auto& run:cell.formatting.runs){if(!firstRun)std::cout<<',';firstRun=false;
+                std::cout<<"{\"start\":"<<run.start<<",\"length\":"<<run.length<<",\"size\":"<<run.fontSize<<",\"font\":"<<jsonText(run.font)<<",\"color\":["<<run.color.red<<','<<run.color.green<<','<<run.color.blue<<"]}";}
+            std::cout<<"]}";
         }
-        std::cout<<"]}\n";return 0;
+        std::cout<<"],\"editor\":";
+        if(editor)std::cout<<"{\"cellId\":"<<editor->cell<<",\"anchor\":"<<editor->anchor<<",\"caret\":"<<editor->caret<<",\"batch\":"<<editor->batch<<'}';else std::cout<<"null";
+        std::cout<<"}\n";return 0;
     } catch(const std::exception& error) {std::cerr<<error.what()<<'\n';return 2;}
 }

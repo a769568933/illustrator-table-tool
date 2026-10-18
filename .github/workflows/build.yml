@@ -48,7 +48,7 @@ jobs:
         run: python scripts/fetch_sdk.py
       - name: Compile Illustrator 2024 x64 plugin with v142
         shell: pwsh
-        run: ./scripts/build.ps1 -SdkRoot './.local/sdk/Adobe Illustrator 2024 SDK' -HostAcceptance:($env:GITHUB_REF -eq 'refs/heads/codex/native-table')
+        run: ./scripts/build.ps1 -SdkRoot './.local/sdk/Adobe Illustrator 2024 SDK'
       - name: Verify native binary and package development build
         shell: pwsh
         run: |
@@ -59,7 +59,7 @@ jobs:
       - name: Upload development plugin package
         uses: actions/upload-artifact@v4
         with:
-          name: IllustratorTableTool-development-win64
+          name: IllustratorTableTool-0.2.0-win64-local-test
           path: dist/package/*
           if-no-files-found: error
           retention-days: 14

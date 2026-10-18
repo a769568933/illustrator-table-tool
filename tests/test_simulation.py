@@ -13,6 +13,54 @@ spec.loader.exec_module(server)
 
 @unittest.skipUnless(os.environ.get('TABLE_SIMULATOR'), 'Requires compiled table_simulator')
 class SimulationTests(unittest.TestCase):
+    def test_edit_chinese_selection_and_roundtrip(self):
+        executable=Path(os.environ['TABLE_SIMULATOR'])
+        state=server.simulate(executable,{'action':'create','rows':1,'columns':1})
+        state=server.simulate(executable,{'action':'edit','state':state['state'],'row':0,'column':0,'anchor':0,'caret':0,'text':'中文\n123'})
+        self.assertEqual(state['cells'][0]['text'],'中文\n123')
+        state=server.simulate(executable,{'action':'edit','state':state['state'],'row':0,'column':0,'anchor':2,'caret':0,'text':'表格'})
+        self.assertEqual(state['cells'][0]['text'],'表格\n123')
+        self.assertEqual(state['editor']['caret'],2)
+        restored=server.simulate(executable,{'action':'inspect','state':state['state']})
+        self.assertEqual(restored['cells'][0]['text'],'表格\n123')
+        with self.assertRaises(ValueError):
+            server.simulate(executable,{'action':'edit','state':state['state'],'row':0,'column':0,'anchor':0,'caret':0,'text':'\x00'})
+        self.assertEqual(server.simulate(executable,{'action':'inspect','state':state['state']})['state'],state['state'])
+
+    def test_delete_unicode_clusters(self):
+        executable=Path(os.environ['TABLE_SIMULATOR'])
+        state=server.simulate(executable,{'action':'create','rows':1,'columns':1})
+        state=server.simulate(executable,{'action':'edit','state':state['state'],'row':0,'column':0,'anchor':0,'caret':0,'text':'A😀é'})
+        state=server.simulate(executable,{'action':'deleteCluster','state':state['state'],'row':0,'column':0,'anchor':5,'caret':5,'backward':True,'boundaries':[0,1,3,5]})
+        self.assertEqual(state['cells'][0]['text'],'A😀')
+        state=server.simulate(executable,{'action':'deleteCluster','state':state['state'],'row':0,'column':0,'anchor':3,'caret':3,'backward':True,'boundaries':[0,1,3]})
+        self.assertEqual(state['cells'][0]['text'],'A')
+
+    def test_tab_new_row_and_limits(self):
+        executable=Path(os.environ['TABLE_SIMULATOR'])
+        state=server.simulate(executable,{'action':'create','rows':2,'columns':2})
+        state=server.simulate(executable,{'action':'command','state':state['state'],'selection':[0,0,0,1],'command':0})
+        next_cell=server.simulate(executable,{'action':'tab','state':state['state'],'row':0,'column':0,'anchor':0,'caret':0,'backward':False})
+        expected=next(c['id'] for c in next_cell['cells'] if c['row']==1 and c['column']==0)
+        self.assertEqual(next_cell['editor']['cellId'],expected)
+        grown=server.simulate(executable,{'action':'tab','state':state['state'],'row':1,'column':1,'anchor':0,'caret':0,'backward':False})
+        self.assertEqual(grown['rows'],3)
+        maximum=server.simulate(executable,{'action':'create','rows':100,'columns':1})
+        with self.assertRaises(ValueError):
+            server.simulate(executable,{'action':'tab','state':maximum['state'],'row':99,'column':0,'anchor':0,'caret':0})
+
+    def test_edit_merge_split_formats(self):
+        executable=Path(os.environ['TABLE_SIMULATOR'])
+        state=server.simulate(executable,{'action':'create','rows':1,'columns':2})
+        for column,text in [(0,'甲'),(1,'乙')]:
+            state=server.simulate(executable,{'action':'edit','state':state['state'],'row':0,'column':column,'anchor':0,'caret':0,'text':text})
+        state=server.simulate(executable,{'action':'style','state':state['state'],'selection':[0,1,0,1]})
+        state=server.simulate(executable,{'action':'command','state':state['state'],'selection':[0,0,0,1],'command':0})
+        self.assertEqual(state['cells'][0]['text'],'甲\n乙')
+        restored=server.simulate(executable,{'action':'inspect','state':state['state']})
+        state=server.simulate(executable,{'action':'command','state':restored['state'],'selection':[0,0,0,1],'command':1})
+        self.assertEqual([(c['text'],c['size']) for c in state['cells']],[('甲',12),('乙',18)])
+
     def test_repeated_sidebar_actions_preserve_valid_saved_tables(self):
         executable = Path(os.environ['TABLE_SIMULATOR'])
         rng = random.Random(20261016)

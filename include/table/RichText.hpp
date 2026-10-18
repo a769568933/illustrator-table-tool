@@ -6,6 +6,8 @@ namespace table {
 constexpr std::size_t maximumTextBytes=1024*1024;
 constexpr std::size_t maximumFormatRuns=65536;
 void validateText(std::u16string_view text);
+std::string encodeUtf8(std::u16string_view text);
+std::u16string decodeUtf8(std::string_view text);
 bool isTextBoundary(std::u16string_view text,std::uint32_t position);
 void validateFormatting(std::u16string_view text,const TextFormatting& formatting);
 TextFormatting materializeFormatting(std::u16string_view text,const TextFormatting& formatting,const CellStyle& fallback);

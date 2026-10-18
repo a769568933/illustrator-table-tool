@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def simulate(executable, payload):
     action = payload.get('action', 'inspect')
-    if action not in {'create', 'select', 'command', 'inspect', 'sample', 'style'}:
+    editing = action in {'edit', 'selectText', 'deleteCluster', 'tab'}
+    if action not in {'create', 'select', 'command', 'inspect', 'sample', 'style'} and not editing:
         raise ValueError('Unknown simulation action')
     args = [str(executable), action]
     if action == 'create':
@@ -22,7 +23,21 @@ def simulate(executable, payload):
         args += [str(int(value)) for value in selection]
         if action == 'command':
             args.append(str(int(payload['command'])))
-    result = subprocess.run(args, input=payload.get('state', ''), text=True,
+    standard_input=payload.get('state','')
+    if editing:
+        args += [str(int(payload.get(key,0))) for key in ('row','column','anchor','caret')]
+        args.append('1' if payload.get('backward',False) else '0')
+        inserted=payload.get('text','')
+        if not isinstance(standard_input,str) or not isinstance(inserted,str):
+            raise ValueError('Invalid text payload')
+        boundaries=payload.get('boundaries',[])
+        if not isinstance(boundaries,list) or len(boundaries)>1024*1024+1:
+            raise ValueError('Invalid boundary count')
+        standard_input=f'{len(standard_input.encode("utf-8"))}\n{standard_input}\n{len(inserted.encode("utf-8"))}\n{inserted}\n'
+        standard_input += ' '.join(str(int(value)) for value in boundaries)+'\n'
+        if len(standard_input.encode('utf-8'))>20*1024*1024:
+            raise ValueError('Simulation input exceeds limit')
+    result = subprocess.run(args, input=standard_input, text=True,
                             encoding='utf-8', capture_output=True, timeout=10)
     if result.returncode:
         raise ValueError(result.stderr.strip() or 'Simulation failed')

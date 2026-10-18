@@ -89,4 +89,44 @@ void appendFormattedText(std::u16string& destination,TextFormatting& target,std:
     for(auto run:format.runs) {run.start+=offset;pushRun(target.runs,std::move(run));}
     for(auto p:format.paragraphs) {p.start+=offset;pushParagraph(target.paragraphs,p);}
 }
+std::string encodeUtf8(std::u16string_view value) {
+    validateText(value);
+    std::string result;
+    for(std::size_t i=0;i<value.size();++i) {
+        std::uint32_t cp=value[i];
+        if(cp>=0xd800&&cp<=0xdbff) {
+            if(++i>=value.size()||value[i]<0xdc00||value[i]>0xdfff) throw ValidationError("Invalid Unicode encoding");
+            cp=0x10000+((cp-0xd800)<<10)+(value[i]-0xdc00);
+        } else if(cp>=0xdc00&&cp<=0xdfff) throw ValidationError("Invalid Unicode encoding");
+        if(cp<0x80) result+=static_cast<char>(cp);
+        else if(cp<0x800) {result+=static_cast<char>(0xc0|(cp>>6));result+=static_cast<char>(0x80|(cp&63));}
+        else if(cp<0x10000) {result+=static_cast<char>(0xe0|(cp>>12));result+=static_cast<char>(0x80|((cp>>6)&63));result+=static_cast<char>(0x80|(cp&63));}
+        else {result+=static_cast<char>(0xf0|(cp>>18));result+=static_cast<char>(0x80|((cp>>12)&63));result+=static_cast<char>(0x80|((cp>>6)&63));result+=static_cast<char>(0x80|(cp&63));}
+        if(result.size()>maximumTextBytes) throw ValidationError("Invalid Unicode encoding");
+    }
+    return result;
+}
+std::u16string decodeUtf8(std::string_view value) {
+    if(value.size()>maximumTextBytes) throw ValidationError("Text exceeds limit");
+    std::u16string result;
+    for(std::size_t i=0;i<value.size();) {
+        auto first=static_cast<unsigned char>(value[i++]);
+        std::uint32_t cp=first; int count=0; std::uint32_t minimum=0;
+        if(first<0x80) {}
+        else if(first>=0xc2&&first<=0xdf) {cp=first&31;count=1;minimum=0x80;}
+        else if(first>=0xe0&&first<=0xef) {cp=first&15;count=2;minimum=0x800;}
+        else if(first>=0xf0&&first<=0xf4) {cp=first&7;count=3;minimum=0x10000;}
+        else throw ValidationError("Invalid Unicode encoding");
+        for(int n=0;n<count;++n) {
+            if(i>=value.size()) throw ValidationError("Invalid Unicode encoding");
+            auto b=static_cast<unsigned char>(value[i++]); if((b&0xc0)!=0x80) throw ValidationError("Invalid Unicode encoding"); cp=(cp<<6)|(b&63);
+        }
+        if(cp<minimum||cp>0x10ffff||(cp>=0xd800&&cp<=0xdfff)) throw ValidationError("Invalid Unicode encoding");
+        if(cp<0x10000) result+=static_cast<char16_t>(cp);
+        else {cp-=0x10000;result+=static_cast<char16_t>(0xd800+(cp>>10));result+=static_cast<char16_t>(0xdc00+(cp&1023));}
+    }
+    validateText(result);
+    return result;
+}
+
 }

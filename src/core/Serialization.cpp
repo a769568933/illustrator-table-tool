@@ -12,51 +12,15 @@ namespace table {
 namespace {
 constexpr std::size_t maxDocumentBytes=16*1024*1024, maxTextBytes=1024*1024;
 [[noreturn]] void invalid(){throw ValidationError("Invalid or unsupported table data");}
-std::string utf8(const std::u16string& value) {
-    std::string result;
-    for(std::size_t i=0;i<value.size();++i) {
-        std::uint32_t cp=value[i];
-        if(cp>=0xd800&&cp<=0xdbff) {
-            if(++i>=value.size()||value[i]<0xdc00||value[i]>0xdfff) invalid();
-            cp=0x10000+((cp-0xd800)<<10)+(value[i]-0xdc00);
-        } else if(cp>=0xdc00&&cp<=0xdfff) invalid();
-        if(cp<0x80) result+=static_cast<char>(cp);
-        else if(cp<0x800) {result+=static_cast<char>(0xc0|(cp>>6));result+=static_cast<char>(0x80|(cp&63));}
-        else if(cp<0x10000) {result+=static_cast<char>(0xe0|(cp>>12));result+=static_cast<char>(0x80|((cp>>6)&63));result+=static_cast<char>(0x80|(cp&63));}
-        else {result+=static_cast<char>(0xf0|(cp>>18));result+=static_cast<char>(0x80|((cp>>12)&63));result+=static_cast<char>(0x80|((cp>>6)&63));result+=static_cast<char>(0x80|(cp&63));}
-        if(result.size()>maxTextBytes) invalid();
-    }
-    return result;
-}
-std::u16string utf16(const std::string& value) {
-    std::u16string result;
-    for(std::size_t i=0;i<value.size();) {
-        auto first=static_cast<unsigned char>(value[i++]);
-        std::uint32_t cp=first; int count=0; std::uint32_t minimum=0;
-        if(first<0x80) {}
-        else if(first>=0xc2&&first<=0xdf) {cp=first&31;count=1;minimum=0x80;}
-        else if(first>=0xe0&&first<=0xef) {cp=first&15;count=2;minimum=0x800;}
-        else if(first>=0xf0&&first<=0xf4) {cp=first&7;count=3;minimum=0x10000;}
-        else invalid();
-        for(int n=0;n<count;++n) {
-            if(i>=value.size()) invalid();
-            auto b=static_cast<unsigned char>(value[i++]); if((b&0xc0)!=0x80) invalid(); cp=(cp<<6)|(b&63);
-        }
-        if(cp<minimum||cp>0x10ffff||(cp>=0xd800&&cp<=0xdfff)) invalid();
-        if(cp<0x10000) result+=static_cast<char16_t>(cp);
-        else {cp-=0x10000;result+=static_cast<char16_t>(0xd800+(cp>>10));result+=static_cast<char16_t>(0xdc00+(cp&1023));}
-    }
-    return result;
-}
 void writeText(std::ostream& out,const std::u16string& text) {
-    auto bytes=utf8(text);if(out.tellp()+static_cast<std::streamoff>(bytes.size()+32)>static_cast<std::streamoff>(maxDocumentBytes)) invalid();
+    auto bytes=encodeUtf8(text);if(out.tellp()+static_cast<std::streamoff>(bytes.size()+32)>static_cast<std::streamoff>(maxDocumentBytes)) invalid();
     out<<bytes.size()<<'\n';out.write(bytes.data(),static_cast<std::streamsize>(bytes.size()));out<<'\n';
 }
 template<class T> T number(std::istream& in) {T result{};if(!(in>>result)) invalid();return result;}
 std::u16string readText(std::istream& in) {
     auto size=number<std::size_t>(in);if(size>maxTextBytes||in.get()!='\n') invalid();
     std::string bytes(size,'\0');if(!in.read(bytes.data(),static_cast<std::streamsize>(size))||in.get()!='\n') invalid();
-    return utf16(bytes);
+    return decodeUtf8(bytes);
 }
 void writeStyle(std::ostream& out,const CellStyle& style) {
     validateStyle(style);

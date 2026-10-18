@@ -158,7 +158,7 @@
 
 **Interfaces:** `EditController::begin(NativeTable&,CellId,Point)`、`handle(const InputEvent&)`、`beforeStructure()->bool`、`end(bool commitComposition)`、`refreshView()`。HostCommand 提供 `invokeHostCommand(SPBasicSuite*,SPPluginRef,const std::function<void(Suites&)>&)->void`，RAII 包装 PushAppContext/PopAppContext；当前应用 owner 取 SDK GetPlatformAppWindow。会话身份包含 document、table group、cell ID 和 generation。
 
-- [ ] 写 `stale_input_session_rejected`、`pending_ime_blocks_structure`、`failed_apply_keeps_session`、`typing_batch_breaks_on_navigation`。宿主新增断言：一次输入法确认/粘贴/合并/拖动分别一次撤销恢复原模型和路径；重做恢复新内容。连续普通输入同批次撤销，切格后不得并入旧批次。
+- [x] 写 `stale_input_session_rejected`、`pending_ime_blocks_structure`、`failed_apply_keeps_session`、`typing_batch_breaks_on_navigation`。宿主新增断言：一次输入法确认/粘贴/合并/拖动分别一次撤销恢复原模型和路径；重做恢复新内容。连续普通输入同批次撤销，切格后不得并入旧批次。
 
   ```cpp
   // Inside the real host acceptance callback, before/after are serialized model snapshots.
@@ -170,10 +170,10 @@
   expect(serialize(native.model) == after, "redo restores committed edit");
   auditVectorTable(suites,native.group);
   ```
-- [ ] 运行模块测试与开发宿主验收，先确认缺少路由/事务导致失败。验证原生 SDK 的应用上下文就是操作边界；不在通知或绘制回调中修改文档。
-- [ ] 双击改为自定义 begin，不切到 AI 文字工具；编辑中点击/拖动经 layout 命中，Shift 单击保持格区域选择；Tab/Shift+Tab/Enter/Esc 按方案处理。侧栏每条结构/样式命令先经 beforeStructure，再走同一核心与适配器。成功提交后才接受新 session；不在辅助绘制回调里同步正文。
-- [ ] 宿主桥在自己的非嵌套上下文中为新操作设 standard undo，连续普通输入才使用 append；遇到嵌套、非本插件事务或批次失效时开始独立操作，不强行并入其他工具的撤销。文档切换/关闭、工具切换、undo/redo、锁定隐藏和移动缩放时重新验证或结束会话。清除回调并释放插件 pin 后才能卸载。
-- [ ] 运行全部 Windows/SDK 回归及实际宿主事务测试，提交：`feat: integrate frameless editing with sidebar and host history`。
+- [x] 运行模块测试与开发宿主验收，先确认缺少路由/事务导致失败。验证原生 SDK 的应用上下文就是操作边界；不在通知或绘制回调中修改文档。
+- [x] 双击改为自定义 begin，不切到 AI 文字工具；编辑中点击/拖动经 layout 命中，Shift 单击保持格区域选择；Tab/Shift+Tab/Enter/Esc 按方案处理。侧栏每条结构/样式命令先经 beforeStructure，再走同一核心与适配器。成功提交后才接受新 session；不在辅助绘制回调里同步正文。
+- [x] 宿主桥在自己的非嵌套上下文中为新操作设 standard undo，连续普通输入才使用 append；遇到嵌套、非本插件事务或批次失效时开始独立操作，不强行并入其他工具的撤销。文档切换/关闭、工具切换、undo/redo、锁定隐藏和移动缩放时重新验证或结束会话。清除回调并释放插件 pin 后才能卸载。
+- [x] 运行全部 Windows/SDK 回归及实际宿主事务测试，提交：`feat: integrate frameless editing with sidebar and host history`。
 
 ### Task 7：模拟、实机验收和成品打包
 
@@ -181,7 +181,7 @@
 
 **Interfaces:** 模拟器新增 edit/selectText/deleteCluster/tab 动作，JSON 返回 cells 中的正文/格式，以及 editor 对象 `{cellId,anchor,caret,batch}`；仍调用 Task 1/2 的 C++ 核心。编辑请求包含现有 state 以及 row/column/anchor/caret；edit 附 text，deleteCluster 附 boundaries/backward，tab 附 backward。新动作通过有界的长度前缀 stdin 块传递模型与正文，正文不放命令行；旧动作协议保留。浏览器模拟的簇来自 Intl.Segmenter，固定组合字符测试传明确 boundaries；其结果不计为 DirectWrite 排版通过。自动宿主入口保留仅显式标记且无用户文档才新建测试文档的保护，新增阶段名 `frameless.*`，失败日志不记录用户文字。
 
-- [ ] 先写模拟流程断言：输入“中文\n123”、拖选替换、连续删除组合字符、跨合并格 Tab、末格增行、合并/拆分格式、序列化重开、错误输入保留原状态；让当前未接通模拟动作失败。模拟画布用 canvas 与自定义键盘/组字事件，不用 DOM 正文输入框；明确标为模拟，不声称 DirectWrite/AI 结果。
+- [x] 先写模拟流程断言：输入“中文\n123”、拖选替换、连续删除组合字符、跨合并格 Tab、末格增行、合并/拆分格式、序列化重开、错误输入保留原状态；让当前未接通模拟动作失败。模拟画布用 canvas 与自定义键盘/组字事件，不用 DOM 正文输入框；明确标为模拟，不声称 DirectWrite/AI 结果。
 
   ```python
   executable = Path(os.environ["TABLE_SIMULATOR"])
@@ -202,6 +202,6 @@
 ## 自审与执行交接
 
 - 需求覆盖：零文字框 Task 4/7；正文数据/格式 Task 1；文字编辑/Tab Task 2/6；轮廓/溢出 Task 3/4；输入法/候选/取消 Task 5/6/7；侧栏/事务/生命周期 Task 6；模拟与交付 Task 7。
-- 类型检查：正文只在 Cell.text；格式只在 Cell.formatting；预编辑只在输入会话；DirectWrite 为唯一 Windows 排版与簇边界来源；SDK 仅由 HostCommand/插件回调访问。
+- 类型检查：正文只在 Cell.text；格式只在 Cell.formatting；预编辑只在输入会话；DirectWrite 排版簇与 Windows ICU 字素边界相交，避免字体回退时拆开组合字符；SDK 仅由 HostCommand/插件回调访问。
 - 五项 Review Focus 已分别有指定测试，不以网页模拟替代 SDK 或 IME 验收。
-- 执行方式沿用当前会话直接实施；先请用户审阅本计划。不得把“设计确认”记为“计划已审阅”，不得在计划待审时安装依赖或开始产品代码修改。
+- 用户已确认计划，当前会话实施。用户随后明确要求自行本地测试，因此 Task 7 的实机安装、输入法、停靠、保存重开和导出步骤移入交付测试清单，未执行、不记通过；交付命名为本地测试版。

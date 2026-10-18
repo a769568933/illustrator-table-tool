@@ -1,0 +1,25 @@
+// Start simulation_server.py first. Uses a fresh headless browser, never a user profile.
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+(async()=>{
+ const browser=await chromium.launch({channel:'msedge',headless:true});
+ try{
+  const page=await browser.newPage({viewport:{width:1280,height:820}});
+  page.on('pageerror',e=>{throw e;});
+  await page.goto(process.env.SIMULATION_URL || 'http://127.0.0.1:8777');
+  await page.getByText('4 行 × 4 列 · 16 个单元格',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'运行模拟测试'}).click();
+  await page.getByText('8 项模拟流程通过；不代表 Illustrator 实机验收通过。',{exact:true}).waitFor();
+  console.log('Visible simulation workflow: 8 checks passed');
+  await page.getByRole('button',{name:'填入示例文字'}).click();
+  await page.getByRole('gridcell',{name:'第1行第1列',exact:true}).dblclick();
+  await page.getByText('文字编辑：第 1 行，第 1 列',{exact:true}).waitFor();
+  console.log('Double click enters canvas editor');
+  await page.locator('#editor').press('Control+A');
+  await page.locator('#editor').pressSequentially('TEST');
+  await page.getByRole('gridcell',{name:'第1行第1列',exact:true}).filter({hasText:'TEST'}).waitFor();
+  await page.locator('#editor').press('Tab');
+  await page.getByText('文字编辑：第 1 行，第 2 列',{exact:true}).waitFor();
+  console.log('Canvas text input and Tab passed');
+  if(process.env.SIMULATION_SCREENSHOT)await page.screenshot({path:process.env.SIMULATION_SCREENSHOT,fullPage:true});
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e.stack);process.exitCode=1;});
