@@ -253,7 +253,26 @@ void distribute_selected_tracks(){
     minimal=applyCommand(minimal,{0,0,99,19},Command::DistributeColumns);
     expect(serialize(deserialize(serialize(minimal)))==serialize(minimal),"minimum-size distribution stays serializable");
 }
+void drag_cell_selection(){
+    using namespace table;
+    auto model=TableModel::create(4,4,120,80);Interaction action;
+    const auto before=serialize(model);
+    action.pointerDown(model,{10,10},false,1);action.pointerMove({85,55});
+    auto selected=action.selection();
+    expect(selected&&selected->firstRow==0&&selected->firstColumn==0&&selected->lastRow==2&&selected->lastColumn==2,"mouse drag selects rectangle without Shift");
+    expect(!action.pointerUp()&&serialize(model)==before,"selection drag creates no artwork or undo change");
+    action.pointerDown(model,{85,55},false,1);action.pointerMove({10,10});
+    expect(action.selection()->firstRow==0&&action.selection()->lastRow==2,"reverse drag keeps original anchor");action.pointerUp();
+    action.pointerDown(model,{10,10},false,1);action.pointerMove({300,300});
+    expect(action.selection()->lastRow==3&&action.selection()->lastColumn==3,"drag outside table clamps to last cell");action.pointerUp();
+    action.pointerDown(model,{10,10},false,1);action.pointerMove({30,20});
+    expect(action.selection()->lastRow==1&&action.selection()->lastColumn==1,"crossing exact track intersection keeps selection mode");action.pointerUp();
+    model.merge({1,1,2,2});action.pointerDown(model,{10,10},false,1);action.pointerMove({40,30});
+    expect(action.selection()->lastRow==2&&action.selection()->lastColumn==2,"drag includes complete merged cell");action.pointerUp();
+    action.pointerDown(model,{30,10},false,1);action.pointerMove({35,10});
+    expect(action.pointerUp().has_value(),"starting on an edge still resizes tracks");
+}
 int main() {
-    try { creation(); geometry(); interaction(); merging(); structure(); persistence(); styling(); sidebarWorkflow(); distribute_selected_tracks(); std::cout << checks << " checks passed\n"; return 0; }
+    try { creation(); geometry(); interaction(); merging(); structure(); persistence(); styling(); sidebarWorkflow(); distribute_selected_tracks(); drag_cell_selection(); std::cout << checks << " checks passed\n"; return 0; }
     catch (const std::exception& error) { std::cerr << "FAIL after " << checks << " checks: " << error.what() << '\n'; return 1; }
 }

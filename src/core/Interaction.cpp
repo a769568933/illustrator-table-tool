@@ -1,5 +1,6 @@
 #include "table/Interaction.hpp"
 #include <algorithm>
+#include <cmath>
 
 namespace table {
 void Interaction::selectCell(const TableModel& model,CellId id) {
@@ -16,6 +17,10 @@ void Interaction::pointerDown(const TableModel& model, Point point, bool shift, 
     if (hit.kind!=HitKind::Cell) { clearSelection(); return; }
     const auto& cell=model.cellById(hit.cell);
     if (!shift || !anchor) anchor=cell.id;
+    source=model;selecting=true;
+    extendSelection(model,cell);
+}
+void Interaction::extendSelection(const TableModel& model,const Cell& cell){
     const Cell* first=nullptr;
     try { first=&model.cellById(*anchor); }
     catch (const ValidationError&) { anchor=cell.id; first=&cell; }
@@ -42,7 +47,14 @@ void Interaction::pointerDown(const TableModel& model, Point point, bool shift, 
     } while (expanded);
 }
 void Interaction::pointerMove(Point point) {
-    if (!boundary || !source) return;
+    if(!std::isfinite(point.x)||!std::isfinite(point.y))throw ValidationError("Invalid drag point");
+    if(!source)return;
+    if(selecting){
+        auto track=[](const std::vector<double>& sizes,double value){int index=0;double end=sizes[0];
+            while(index+1<static_cast<int>(sizes.size())&&value>=end){++index;end+=sizes[index];}return index;};
+        extendSelection(*source,source->cellAt(track(source->heights(),point.y),track(source->widths(),point.x)));return;
+    }
+    if(!boundary)return;
     auto next=*source;
     double delta=boundary->vertical ? point.x-start.x : point.y-start.y;
     next.resizeBoundary(boundary->vertical,boundary->track,delta);
@@ -54,5 +66,5 @@ std::optional<TableModel> Interaction::pointerUp() {
     cancel();
     return result;
 }
-void Interaction::cancel() { source.reset(); candidate.reset(); boundary.reset(); changed=false; }
+void Interaction::cancel() { source.reset(); candidate.reset(); boundary.reset(); changed=false;selecting=false; }
 }
