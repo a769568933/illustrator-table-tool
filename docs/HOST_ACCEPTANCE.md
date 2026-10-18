@@ -4,7 +4,9 @@
 
 0.2.2 已安装并校验，旧版保存在项目 `.local/plugin-backups/before-0.2.2-1792303100`。用户重新打开 AI 后明确反馈“双击出现光标，能输入，但是会和 AI 快捷键冲突”。双击入口已得到用户确认，不能据此声称输入过程完整通过；拖选和保存等实机结果尚未反馈。
 
-0.2.3 正在处理宿主快捷键先于输入窗口分发，以及空闲通知误将自身路径写入视为外部变更的两处宿主交互。详见 `docs/BUGFIX_0.2.3.md`；当前尚未交付或安装 0.2.3。
+0.2.3 处理宿主快捷键先于输入窗口分发，以及空闲通知误将自身路径写入视为外部变更的两处宿主交互。构建 [39102952373](https://github.com/a769568933/illustrator-table-tool/actions/runs/39102952373) 的全部 10 个 CTest、7 个模拟用例和原生包检查通过；独立审查未发现 Critical 或 Important 问题。真实输入法候选和 AI 内的快捷键处理仍需用户测试。
+
+已核对 GitHub artifact、ZIP、内部文件摘要、x64 PE、PluginMain、PiPL、版本 0.2.3 及关闭开发自动验收入口。确认 Illustrator 已退出后安装到既有 `dist/loading-probe/IllustratorTableTool.aip`；旧 0.2.2 备份至 `.local/plugin-backups/before-0.2.3-1792303861`，替换后摘要和版本相符，加载目录仅一份 AIP。未启动或操作 Illustrator，尚未记为实机验收通过。详见 `docs/BUGFIX_0.2.3.md`。
 
 ## 0.2.2：用户反馈后的入口检查与拖选
 
