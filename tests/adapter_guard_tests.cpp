@@ -46,6 +46,13 @@ AIErr AIAPI binary(ConstAIDictionaryRef dict,AIDictKey,void* value,std::size_t* 
     if(value) std::memcpy(value,bytes.data(),bytes.size());*size=bytes.size();return kNoErr;
 }
 AIErr AIAPI malformedRole(ConstAIDictionaryRef,AIDictKey,const char**){return kBadParameterErr;}
+int creations=0,rollbacks=0;
+AIErr AIAPI noParent(AIArtHandle,AIArtHandle* result){*result=nullptr;return kNoErr;}
+AIErr AIAPI failThirdArt(ai::int16,ai::int16,AIArtHandle,AIArtHandle* result){
+    if(++creations==3)return kBadParameterErr;*result=handle<AIArtHandle>(1000+creations);return kNoErr;
+}
+AIErr AIAPI clipGroup(AIArtHandle,AIBoolean){return kNoErr;}
+AIErr AIAPI rollback(){++rollbacks;return kNoErr;}
 }
 int main() {
     document.GetDocument=getDocument;art.ValidArt=invalidArt;art.GetDictionary=readDictionary;
@@ -75,4 +82,14 @@ int main() {
     try{auditVectorTable(suites,handle<AIArtHandle>(30));}catch(...){rejected=true;}
     if(!rejected){std::cerr<<"Non-vector child escaped recursive audit\n";return 1;}
     std::cout<<"Recursive audit refuses native text child\n";
+    forbiddenChild=false;art.GetArtParent=noParent;art.NewArt=failThirdArt;groups.SetGroupClipped=clipGroup;undo.UndoChanges=rollback;
+    auto original=table::TableModel::create(1,1,100,40);const auto cell=original.cellAt(0,0).id;original.setText(cell,u"A");
+    NativeTable cached{original};cached.document=current;cached.group=handle<AIArtHandle>(3);cached.frame=handle<AIArtHandle>(101);
+    cached.cells.push_back({cell,handle<AIArtHandle>(102),handle<AIArtHandle>(103),table::layoutText({u"A",{},table::CellStyle{},100,40})});
+    auto changed=original;changed.setText(cell,u"B");rejected=false;
+    try{adapter.applyText(cached,changed);}catch(...){rejected=true;}
+    if(!rejected||creations!=3||rollbacks!=1||cached.model.cellById(cell).text!=u"A"||cached.cells.front().content!=handle<AIArtHandle>(103)){
+        std::cerr<<"SDK path failure published a partial table or skipped rollback\n";return 1;
+    }
+    std::cout<<"SDK path failure preserves published model and requests context rollback\n";
 }
