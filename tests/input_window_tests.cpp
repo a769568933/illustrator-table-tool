@@ -67,6 +67,42 @@ void focus_survives_host_callback_restore(){
     }
     DestroyWindow(owner);
 }
+void editor_keys_precede_host_accelerators(){
+    HWND owner=CreateWindowExW(0,L"STATIC",L"",WS_POPUP,-32000,-32000,1,1,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+    expect(owner!=nullptr,"accelerator test owner created");
+    ACCEL keys[]={{FVIRTKEY,'V',1},{FVIRTKEY,VK_TAB,2},{FVIRTKEY,VK_ESCAPE,3},{FVIRTKEY|FCONTROL,'Z',4}};
+    HACCEL accelerators=CreateAcceleratorTableW(keys,4);
+    expect(accelerators!=nullptr,"host accelerator fixture created");
+    BYTE previous[256]{};GetKeyboardState(previous);BYTE plain[256]{};SetKeyboardState(plain);
+    {
+        int hostCommands=0;std::vector<InputEvent> events;InputWindow input;
+        input.create(owner,[&](const InputEvent& e){events.push_back(e);if(e.kind==InputKind::Key&&e.key==VK_ESCAPE)input.blur();});
+        auto pump=[&]{MSG message{};while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){
+            if(TranslateAcceleratorW(owner,accelerators,&message))++hostCommands;
+            else {TranslateMessage(&message);DispatchMessageW(&message);}
+        }};
+        input.focus();pump();expect(GetFocus()==input.handle(),"accelerator test editor focused");
+        PostMessageW(input.handle(),WM_KEYDOWN,'V',1);PostMessageW(input.handle(),WM_KEYUP,'V',1L<<31);pump();
+        std::u16string inserted;for(const auto& e:events)if(e.kind==InputKind::Insert)inserted+=e.text;
+        expect(hostCommands==0&&inserted==u"v","letter typed into editor before host tool accelerator");
+        PostMessageW(input.handle(),WM_KEYDOWN,VK_TAB,1);pump();
+        expect(hostCommands==0&&events.back().kind==InputKind::Key&&events.back().key==VK_TAB,"Tab stays in table editor");
+        plain[VK_CONTROL]=0x80;SetKeyboardState(plain);events.clear();
+        PostMessageW(input.handle(),WM_KEYDOWN,'Z',1);pump();
+        bool undo=false;for(const auto& e:events)if(e.kind==InputKind::Key&&e.key=='Z'&&(e.modifiers&InputControl))undo=true;
+        expect(hostCommands==0&&undo,"Ctrl Z reaches table editor once before host undo accelerator");
+        plain[VK_CONTROL]=0;SetKeyboardState(plain);
+        PostMessageW(input.handle(),WM_KEYDOWN,VK_ESCAPE,1);pump();
+        expect(hostCommands==0&&GetFocus()!=input.handle(),"Escape exits editor before host accelerator");
+        PostMessageW(owner,WM_KEYDOWN,'V',1);pump();
+        expect(hostCommands==1,"host shortcuts resume after editor blur");
+        input.focus();pump();SetFocus(owner);PostMessageW(owner,WM_KEYDOWN,'V',1);pump();
+        expect(hostCommands==2,"unrelated focused window keeps host shortcuts");
+        input.destroy();PostMessageW(owner,WM_KEYDOWN,'V',1);pump();
+        expect(hostCommands==3,"destroyed input leaves no keyboard interception");
+    }
+    SetKeyboardState(previous);DestroyAcceleratorTable(accelerators);DestroyWindow(owner);
+}
 void clipboard_unlock_on_failure(){
     // Own memory only: tests must not replace the user's system clipboard.
     HGLOBAL memory=GlobalAlloc(GMEM_MOVEABLE,8);expect(memory!=nullptr,"clipboard fixture allocated");
@@ -90,6 +126,6 @@ void pt_dpi_roundtrip(){
 }
 }
 int main(){try{
-    custom_window_has_no_edit_children();ime_commit_once();ime_cancel_keeps_model();surrogate_input_is_atomic();focus_survives_host_callback_restore();clipboard_unlock_on_failure();pt_dpi_roundtrip();
+    custom_window_has_no_edit_children();ime_commit_once();ime_cancel_keeps_model();surrogate_input_is_atomic();focus_survives_host_callback_restore();editor_keys_precede_host_accelerators();clipboard_unlock_on_failure();pt_dpi_roundtrip();
     std::cout<<checks<<" input and preview checks passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

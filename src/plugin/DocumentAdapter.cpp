@@ -56,6 +56,7 @@ bool DocumentAdapter::valid(const NativeTable& table)const{
     }
     return true;
 }
+bool DocumentAdapter::matchesPublishedArtwork(const NativeTable&)const{return false;}
 void DocumentAdapter::role(AIArtHandle object,const std::string& value){DictionaryLease d{dictionaries};checked(art->GetDictionary(object,&d.value));checked(dictionaries->SetStringEntry(d.value,dictionaries->Key(roleKey),value.c_str()));}
 std::string DocumentAdapter::role(AIArtHandle object)const{
     if(!art->HasDictionary(object))return {};

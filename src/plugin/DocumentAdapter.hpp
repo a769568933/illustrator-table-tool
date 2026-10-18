@@ -18,6 +18,7 @@ struct NativeTable {
     std::vector<NativeCell> cells;
     std::vector<AIArtHandle> edges;
     double scaleX=1,scaleY=1;
+    std::optional<std::size_t> publishedStamp;
     ArtworkTransform transform()const{return {origin,scaleX,scaleY};}
 };
 class DocumentAdapter {
@@ -36,6 +37,7 @@ public:
     explicit DocumentAdapter(Suites& suites);
     NativeTable createTable(const table::TableModel& model,AIRealPoint origin);
     bool valid(const NativeTable& table)const;
+    bool matchesPublishedArtwork(const NativeTable& table)const;
     void synchronize(NativeTable& table);
     std::vector<NativeTable> discoverTables(std::vector<RejectedTable>* rejected=nullptr);
     void applyGeometry(NativeTable& table,const table::TableModel& model);

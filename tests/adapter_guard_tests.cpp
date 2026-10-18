@@ -59,6 +59,10 @@ AIErr AIAPI failThirdArt(ai::int16,ai::int16,AIArtHandle,AIArtHandle* result){
 }
 AIErr AIAPI clipGroup(AIArtHandle,AIBoolean){return kNoErr;}
 AIErr AIAPI rollback(){++rollbacks;return kNoErr;}
+std::size_t treeStamp=10;
+AIErr AIAPI stamp(AIArtHandle,AIArtTimeStampOptions option,std::size_t* result){
+    if(option!=kAITimeStampMaxFromArtAndChildren)return kBadParameterErr;*result=treeStamp;return kNoErr;
+}
 }
 int main() {
     document.GetDocument=getDocument;art.ValidArt=invalidArt;art.GetDictionary=readDictionary;
@@ -111,4 +115,15 @@ int main() {
     }
     protectedFlags=0;if(!adapter.valid(cached)){std::cerr<<"Independent unprotected artwork was refused\n";return 1;}
     std::cout<<"Nested locked and hidden glyphs refuse mutation before artwork creation\n";
+    art.GetArtTimeStamp=stamp;cached.publishedStamp=treeStamp;
+    if(!adapter.matchesPublishedArtwork(cached)){std::cerr<<"Delayed notification for published artwork must preserve editing\n";return 1;}
+    ++treeStamp;
+    if(adapter.matchesPublishedArtwork(cached)){std::cerr<<"External descendant edit must invalidate published artwork\n";return 1;}
+    cached.publishedStamp=treeStamp;protectedObject=105;protectedFlags=kArtLocked;
+    if(adapter.matchesPublishedArtwork(cached)){std::cerr<<"Parent or descendant protection must end editing even with matching stamp\n";return 1;}
+    protectedFlags=0;current=handle<AIDocumentHandle>(2);
+    if(adapter.matchesPublishedArtwork(cached)){std::cerr<<"Document switch must invalidate even with matching stamp\n";return 1;}
+    current=cached.document;cached.publishedStamp.reset();
+    if(adapter.matchesPublishedArtwork(cached)){std::cerr<<"Unrecorded artwork revision cannot retain editing\n";return 1;}
+    std::cout<<"Deferred self notifications preserve editing; external edits and stale documents invalidate\n";
 }
