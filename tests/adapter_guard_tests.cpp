@@ -31,6 +31,7 @@ AIErr AIAPI rootArt(AILayerHandle,AIArtHandle* value){*value=handle<AIArtHandle>
 bool forbiddenChild=false;
 AIErr AIAPI artType(AIArtHandle value,short* type){*type=id(value)==31?(forbiddenChild?kTextFrameArt:kPathArt):kGroupArt;return kNoErr;}
 AIBoolean AIAPI liveArt(AIArtHandle,AIBoolean){return true;}
+AIErr AIAPI hiddenChild(AIArtHandle value,ai::int32,ai::int32* flags){*flags=id(value)==31?kArtHidden:0;return kNoErr;}
 AIBoolean AIAPI hasDictionary(AIArtHandle value){return id(value)!=10;}
 AIErr AIAPI dictionaryFor(AIArtHandle value,AIDictionaryRef* result){*result=handle<AIDictionaryRef>(id(value));return kNoErr;}
 ai::int32 AIAPI releaseDictionary(AIDictionaryRef){return 0;}
@@ -68,6 +69,7 @@ int main() {
     } catch(...) {std::cerr<<"Malformed table decoding escaped discovery\n";return 1;}
     std::cout<<"Malformed model and role entries are isolated\n";
     art.ValidArt=liveArt;
+    art.GetArtUserAttr=hiddenChild;
     try{auditVectorTable(suites,handle<AIArtHandle>(30));}catch(...){std::cerr<<"Vector-only artwork refused\n";return 1;}
     forbiddenChild=true;bool rejected=false;
     try{auditVectorTable(suites,handle<AIArtHandle>(30));}catch(...){rejected=true;}

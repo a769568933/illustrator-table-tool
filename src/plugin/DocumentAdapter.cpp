@@ -50,7 +50,7 @@ std::string DocumentAdapter::role(AIArtHandle object)const{
     if(!dictionaries->IsKnown(d.value,key))return {};const char* value=nullptr;checked(dictionaries->GetStringEntry(d.value,key,&value));return value?value:"";
 }
 void DocumentAdapter::writeModel(const NativeTable& table,const table::TableModel& model){
-    const auto bytes=table::serialize(model);DictionaryLease d{dictionaries};checked(art->GetDictionary(table.group,&d.value));
+    auto bytes=table::serialize(model);DictionaryLease d{dictionaries};checked(art->GetDictionary(table.group,&d.value));
     checked(dictionaries->SetBinaryEntry(d.value,dictionaries->Key(modelKey),bytes.data(),bytes.size()));
 }
 std::map<table::CellId,std::shared_ptr<const table::TextLayout>> DocumentAdapter::prepare(const table::TableModel& model,const NativeTable* previous){
