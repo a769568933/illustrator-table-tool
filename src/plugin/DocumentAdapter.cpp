@@ -41,6 +41,19 @@ bool DocumentAdapter::valid(const NativeTable& table)const{
     if(!editable(table.frame))return false;
     for(const auto& c:table.cells)if(!editable(c.fill)||!editable(c.content))return false;
     for(auto edge:table.edges)if(!editable(edge))return false;
+    std::vector<AIArtHandle> pending{table.group};std::set<AIArtHandle> seen;
+    while(!pending.empty()){
+        const auto item=pending.back();pending.pop_back();
+        if(seen.size()>=100000||!seen.insert(item).second||!editable(item))return false;
+        short type=0;if(art->GetArtType(item,&type))return false;
+        if(type==kPathArt)continue;
+        if(type!=kGroupArt&&type!=kCompoundPathArt)return false;
+        AIArtHandle child=nullptr;if(art->GetArtFirstChild(item,&child))return false;
+        while(child){
+            if(pending.size()+seen.size()>=100000)return false;pending.push_back(child);
+            AIArtHandle next=nullptr;if(art->GetArtSibling(child,&next))return false;child=next;
+        }
+    }
     return true;
 }
 void DocumentAdapter::role(AIArtHandle object,const std::string& value){DictionaryLease d{dictionaries};checked(art->GetDictionary(object,&d.value));checked(dictionaries->SetStringEntry(d.value,dictionaries->Key(roleKey),value.c_str()));}
