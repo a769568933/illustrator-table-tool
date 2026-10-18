@@ -12,6 +12,7 @@ AIArtSuite art{};AIPathSuite paths{};AIPathStyleSuite styles{};AIGroupSuite grou
 AIDocumentSuite document{};AIUndoSuite undo{};AIDictionarySuite dictionaries{};AILayerSuite layers{};
 AIColorConversionSuite colors{};AIDocumentViewSuite views{};AIAnnotatorDrawerSuite drawer{};
 HWND owner=nullptr;int images=0,contexts=0;
+std::vector<ai::uint8> lastPNG;
 template<class T>T handle(std::uintptr_t value){return reinterpret_cast<T>(value);}
 std::uintptr_t id(const void* value){return reinterpret_cast<std::uintptr_t>(value);}
 AIBoolean AIAPI exists(){return contexts>0;}
@@ -33,7 +34,7 @@ AIErr AIAPI image(AIAnnotatorDrawer*,const ai::uint8* pixels,ai::uint32 width,ai
     if(!pixels||width==0||height==0)return kBadParameterErr;++images;return kNoErr;
 }
 AIErr AIAPI png(AIAnnotatorDrawer*,const ai::uint8* data,ai::uint32 size,const AIPoint&){
-    if(size<8||std::memcmp(data,"\x89PNG\r\n\x1a\n",8))return kBadParameterErr;++images;return kNoErr;
+    if(size<8||std::memcmp(data,"\x89PNG\r\n\x1a\n",8))return kBadParameterErr;lastPNG.assign(data,data+size);++images;return kNoErr;
 }
 SPErr SPAPI acquire(const char* name,ai::int32,const void** result){
 #define SUITE(key,value) if(!std::strcmp(name,key)){*result=&value;return kNoErr;}
@@ -54,15 +55,17 @@ int main(){try{
     owner=CreateWindowExW(0,L"STATIC",L"",WS_POPUP,-32000,-32000,1,1,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     if(!owner)throw std::runtime_error("fixture window unavailable");
     {
-        auto model=table::TableModel::create(1,1,100,40);const auto cell=model.cellAt(0,0).id;
+        auto model=table::TableModel::create(1,1,100,40);const auto cell=model.cellAt(0,0).id;model.setText(cell,u"old");
         NativeTable native{model};native.document=handle<AIDocumentHandle>(100);native.group=handle<AIArtHandle>(1);native.frame=handle<AIArtHandle>(2);native.origin={0,400};native.publishedStamp=10;
-        native.cells.push_back({cell,handle<AIArtHandle>(3),handle<AIArtHandle>(4),table::layoutText({u"",{},table::CellStyle{},100,40})});
+        native.cells.push_back({cell,handle<AIArtHandle>(3),handle<AIArtHandle>(4),table::layoutText({u"old",{},table::CellStyle{},100,40})});
         EditController editor;editor.configure(&basic,handle<SPPluginRef>(1),EditorHost{
             [&](){return &native;},[]{return std::uint64_t(1);},[]{},[](const std::wstring&){},[](const std::function<void()>& operation){operation();},[](table::CellId){}
         });
         editor.begin(native,cell,{10,10});
         AIAnnotatorMessage message{};message.drawer=handle<AIAnnotatorDrawer*>(1);Suites suites(&basic);editor.draw(suites,&message);
         if(!editor.editing()||images!=1)throw std::runtime_error("editor begin must publish a visible caret preview using artwork-coordinate bounds");
+        const auto published=lastPNG;editor.handle({InputKind::Composition,u"replacement",0,0,2,11});editor.draw(suites,&message);
+        if(lastPNG!=published||native.model.cellById(cell).text!=u"old")throw std::runtime_error("Transparent composition must keep published glyphs unchanged and delegate preedit to IME UI");
         editor.end(false);editor.shutdown();
     }
     DestroyWindow(owner);owner=nullptr;
