@@ -19,6 +19,7 @@ AIErr AIAPI push(SPPluginRef,AIAppContextHandle* out){++contexts;*out=handle<AIA
 AIErr AIAPI pop(AIAppContextHandle){--contexts;return kNoErr;}
 AIErr AIAPI appWindow(AIWindowRef* result){*result=owner;return kNoErr;}
 AIErr AIAPI currentDocument(AIDocumentHandle* result){*result=handle<AIDocumentHandle>(100);return kNoErr;}
+AIErr AIAPI stamp(AIArtHandle,AIArtTimeStampOptions,std::size_t* result){*result=10;return kNoErr;}
 AIBoolean AIAPI live(AIArtHandle object,AIBoolean){return object!=nullptr;}
 AIErr AIAPI attributes(AIArtHandle,ai::int32,ai::int32* flags){*flags=0;return kNoErr;}
 AIErr AIAPI parent(AIArtHandle,AIArtHandle* result){*result=nullptr;return kNoErr;}
@@ -44,14 +45,14 @@ SPErr SPAPI release(const char*,ai::int32){return kNoErr;}
 }
 int main(){try{
     context.DoesAppContextExist=exists;context.PushAppContext=push;context.PopAppContext=pop;context.GetPlatformAppWindow=appWindow;
-    art.ValidArt=live;art.GetArtUserAttr=attributes;art.GetArtParent=parent;art.GetArtType=type;art.GetArtFirstChild=child;art.GetArtSibling=sibling;
+    art.ValidArt=live;art.GetArtUserAttr=attributes;art.GetArtParent=parent;art.GetArtType=type;art.GetArtFirstChild=child;art.GetArtSibling=sibling;art.GetArtTimeStamp=stamp;
     document.GetDocument=currentDocument;views.FixedArtworkPointToViewPoint=convert;views.GetDocumentViewBounds=artworkBounds;views.GetDocumentViewVisibleArea=viewArea;drawer.DrawImage=image;
     SPBasicSuite basic{};basic.AcquireSuite=acquire;basic.ReleaseSuite=release;
     owner=CreateWindowExW(0,L"STATIC",L"",WS_POPUP,-32000,-32000,1,1,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     if(!owner)throw std::runtime_error("fixture window unavailable");
     {
         auto model=table::TableModel::create(1,1,100,40);const auto cell=model.cellAt(0,0).id;
-        NativeTable native{model};native.document=handle<AIDocumentHandle>(100);native.group=handle<AIArtHandle>(1);native.frame=handle<AIArtHandle>(2);native.origin={0,400};
+        NativeTable native{model};native.document=handle<AIDocumentHandle>(100);native.group=handle<AIArtHandle>(1);native.frame=handle<AIArtHandle>(2);native.origin={0,400};native.publishedStamp=10;
         native.cells.push_back({cell,handle<AIArtHandle>(3),handle<AIArtHandle>(4),table::layoutText({u"",{},table::CellStyle{},100,40})});
         EditController editor;editor.configure(&basic,handle<SPPluginRef>(1),EditorHost{
             [&](){return &native;},[]{return std::uint64_t(1);},[]{},[](const std::wstring&){},[](const std::function<void()>& operation){operation();},[](table::CellId){}

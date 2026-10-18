@@ -26,6 +26,7 @@ class DocumentAdapter {
     AIArtSuite* art;AIPathSuite* paths;AIDocumentSuite* document;AIUndoSuite* undo;AIDictionarySuite* dictionaries;AILayerSuite* layers;
     VectorArtwork vector;
     bool rootEditable(const NativeTable& table)const;
+    void recordPublishedArtwork(NativeTable& table)const;
     void role(AIArtHandle object,const std::string& value);
     std::string role(AIArtHandle object)const;
     void writeModel(const NativeTable& table,const table::TableModel& model);

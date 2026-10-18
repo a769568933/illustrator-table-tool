@@ -82,7 +82,10 @@ void editor_keys_precede_host_accelerators(){
             else {TranslateMessage(&message);DispatchMessageW(&message);}
         }};
         input.focus();pump();expect(GetFocus()==input.handle(),"accelerator test editor focused");
-        PostMessageW(input.handle(),WM_KEYDOWN,'V',1);PostMessageW(input.handle(),WM_KEYUP,'V',1L<<31);pump();
+        events.clear();PostMessageW(input.handle(),WM_KEYDOWN,'V',1);
+        MSG peek{};expect(PeekMessageW(&peek,input.handle(),WM_KEYDOWN,WM_KEYDOWN,PM_NOREMOVE)&&peek.message==WM_KEYDOWN,"peek without removal leaves keyboard message intact");
+        expect(events.empty(),"peek without removal cannot insert text or invoke editor commands");
+        PostMessageW(input.handle(),WM_KEYUP,'V',1L<<31);pump();
         std::u16string inserted;for(const auto& e:events)if(e.kind==InputKind::Insert)inserted+=e.text;
         expect(hostCommands==0&&inserted==u"v","letter typed into editor before host tool accelerator");
         PostMessageW(input.handle(),WM_KEYDOWN,VK_TAB,1);pump();

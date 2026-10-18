@@ -59,7 +59,7 @@ jobs:
       - name: Upload development plugin package
         uses: actions/upload-artifact@v4
         with:
-          name: IllustratorTableTool-0.2.2-win64-local-test
+          name: IllustratorTableTool-0.2.3-win64-local-test
           path: dist/package/*
           if-no-files-found: error
           retention-days: 14

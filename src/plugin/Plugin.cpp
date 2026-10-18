@@ -92,7 +92,7 @@ void invalidate(Suites& suites) {
     checked(suites.get<AIAnnotatorSuite>(kAIAnnotatorSuite,kAIAnnotatorVersion)->InvalAnnotationRect(nullptr,&screen));
 }
 void startup(SPMessageData* data,Suites& suites,State& state) {
-    traceStage("plugin.start.0.2.2");
+    traceStage("plugin.start.0.2.3");
     state.basic=data->basic;state.plugin=data->self;
     state.editor.configure(state.basic,state.plugin,EditorHost{
         [&state]()->NativeTable* {return state.active&&*state.active<state.tables.size()?&state.tables[*state.active]:nullptr;},
@@ -320,6 +320,13 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
                 state->tables.clear();state->placing=false;state->pending.reset();state->lastCell=0;
                 state->sidebar.update(false,L"文档已切换或关闭，请重新选择表格。");
             } else if(notifier==state->artChanged&&!state->mutating) {
+                // This notifier is delivered on idle, after our synchronous
+                // mutation guard has ended. Preserve the session only if its
+                // published artwork revision and editability still match.
+                if(state->active&&*state->active<state->tables.size()&&DocumentAdapter(suites).matchesPublishedArtwork(state->tables[*state->active])){
+                    if(state->editor.editing())traceStage("edit.notice.published-artwork");
+                    return kNoErr;
+                }
                 if(state->editor.editing())traceStage("edit.exit.art-changed");
                 state->editor.end(false);++state->generation;
                 // Keep valid cached tables through native text edits; clear deleted/foreign handles.

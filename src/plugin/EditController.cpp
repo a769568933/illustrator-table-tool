@@ -21,7 +21,7 @@ std::uint32_t nearestStop(const table::TextLayout& layout,std::uint32_t position
 void EditController::configure(SPBasicSuite* value,SPPluginRef self,EditorHost callbacks){basic=value;plugin=self;host=std::move(callbacks);}
 NativeTable* EditController::current(Suites& suites){
     if(!session)return nullptr;auto native=host.active();
-    if(!native||!session->matches(identity(*native,host.generation()))||!DocumentAdapter(suites).valid(*native))throw table::ValidationError("Text session is stale");
+    if(!native||!session->matches(identity(*native,host.generation()))||!DocumentAdapter(suites).matchesPublishedArtwork(*native))throw table::ValidationError("Text session is stale");
     native->model.cellById(session->selection().cell);return native;
 }
 void EditController::begin(NativeTable& native,table::CellId id,table::Point point){

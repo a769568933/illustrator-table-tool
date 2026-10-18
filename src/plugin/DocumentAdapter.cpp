@@ -56,7 +56,14 @@ bool DocumentAdapter::valid(const NativeTable& table)const{
     }
     return true;
 }
-bool DocumentAdapter::matchesPublishedArtwork(const NativeTable&)const{return false;}
+void DocumentAdapter::recordPublishedArtwork(NativeTable& table)const{
+    std::size_t stamp=0;checked(art->GetArtTimeStamp(table.group,kAITimeStampMaxFromArtAndChildren,&stamp));table.publishedStamp=stamp;
+}
+bool DocumentAdapter::matchesPublishedArtwork(const NativeTable& table)const{
+    if(!table.publishedStamp||!valid(table))return false;
+    std::size_t stamp=0;
+    return !art->GetArtTimeStamp(table.group,kAITimeStampMaxFromArtAndChildren,&stamp)&&stamp==*table.publishedStamp;
+}
 void DocumentAdapter::role(AIArtHandle object,const std::string& value){DictionaryLease d{dictionaries};checked(art->GetDictionary(object,&d.value));checked(dictionaries->SetStringEntry(d.value,dictionaries->Key(roleKey),value.c_str()));}
 std::string DocumentAdapter::role(AIArtHandle object)const{
     if(!art->HasDictionary(object))return {};
@@ -106,7 +113,7 @@ NativeTable DocumentAdapter::createTable(const table::TableModel& model,AIRealPo
         }
         for(const auto& edge:table::Geometry::visibleEdges(model)){auto p=vector.path(native.group);vector.line(p,edge,native.transform());role(p,"edge:"+std::to_string(native.edges.size()));native.edges.push_back(p);}
         styleEdges(native,model);writeModel(native,model);auditVectorTable(suites,native.group);
-        auto label=ai::UnicodeString::FromUTF8("新建表格");checked(undo->SetUndoTextUS(label,label));return native;
+        auto label=ai::UnicodeString::FromUTF8("新建表格");checked(undo->SetUndoTextUS(label,label));recordPublishedArtwork(native);return native;
     }catch(...){if(native.group)art->DisposeArt(native.group);throw;}
 }
 NativeTable DocumentAdapter::readTable(AIArtHandle group){
@@ -134,7 +141,7 @@ NativeTable DocumentAdapter::readTable(AIArtHandle group){
     if(!same(corners[0].p.v,corners[1].p.v)||!same(corners[2].p.v,corners[3].p.v)||!same(corners[0].p.h,corners[3].p.h)||!same(corners[1].p.h,corners[2].p.h))throw table::ValidationError("Rotated or sheared table");
     native.scaleX=(corners[1].p.h-corners[0].p.h)/native.model.width();native.scaleY=(corners[0].p.v-corners[3].p.v)/native.model.height();native.origin=corners[0].p;
     if(!std::isfinite(native.scaleX)||!std::isfinite(native.scaleY)||native.scaleX<=0||native.scaleY<=0)throw table::ValidationError("Invalid table transform");
-    auto layouts=prepare(native.model,nullptr);for(auto& c:native.cells)c.layout=layouts.at(c.id);return native;
+    auto layouts=prepare(native.model,nullptr);for(auto& c:native.cells)c.layout=layouts.at(c.id);recordPublishedArtwork(native);return native;
 }
 void DocumentAdapter::synchronize(NativeTable& table){
     if(!rootEditable(table))throw table::ValidationError("Table belongs to a closed document or invalid artwork");
@@ -197,7 +204,7 @@ void DocumentAdapter::apply(NativeTable& native,const table::TableModel& model,c
             vector.rectangle(next.frame,{0,0,model.width(),model.height()},next.transform());styleEdges(next,model);
         }else next.edges=native.edges;
         writeModel(next,model);auditVectorTable(suites,next.group);
-        const auto label=ai::UnicodeString::FromUTF8(title);checked(undo->SetUndoTextUS(label,label));native=std::move(next);
+        const auto label=ai::UnicodeString::FromUTF8(title);checked(undo->SetUndoTextUS(label,label));recordPublishedArtwork(next);native=std::move(next);
     }catch(...){checked(undo->UndoChanges());throw;}
 }
 void DocumentAdapter::applyGeometry(NativeTable& native,const table::TableModel& model){apply(native,model,"调整表格尺寸");}
