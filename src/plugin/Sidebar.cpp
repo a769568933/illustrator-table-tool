@@ -3,6 +3,7 @@
 #include "SPInterf.h"
 #include "Trace.hpp"
 #include "text/TextLayout.hpp"
+#include "table/RichText.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cwchar>
@@ -81,11 +82,17 @@ void Sidebar::enableControls(){
     for(auto control:alignButtons)if(control)EnableWindow(control,!busy&&selectionEnabled);
 }
 void Sidebar::updateStyle(const table::TableModel& model,table::CellRange range){
-    if(!window)return;const auto& first=model.cellAt(range.firstRow,range.firstColumn).style;
+    if(!window)return;const auto& anchor=model.cellAt(range.firstRow,range.firstColumn);auto first=anchor.style;
+    const auto initial=table::materializeFormatting(anchor.text,anchor.formatting,anchor.style);
+    if(!initial.runs.empty()){first.font=initial.runs.front().font;first.fontSize=initial.runs.front().fontSize;}
+    if(!initial.paragraphs.empty())first.alignment=initial.paragraphs.front().alignment;
     bool sameFont=true,sameSize=true,sameHorizontal=true,sameVertical=true,sameFill=true;
     for(const auto& cell:model.cells())if(cell.row<=range.lastRow&&cell.column<=range.lastColumn&&cell.row+cell.rowSpan>range.firstRow&&cell.column+cell.columnSpan>range.firstColumn){
-        sameFont=sameFont&&cell.style.font==first.font;sameSize=sameSize&&cell.style.fontSize==first.fontSize;
-        sameHorizontal=sameHorizontal&&cell.style.alignment==first.alignment;sameVertical=sameVertical&&cell.style.verticalAlignment==first.verticalAlignment;sameFill=sameFill&&cell.style.fillEnabled==first.fillEnabled;
+        const auto format=table::materializeFormatting(cell.text,cell.formatting,cell.style);
+        if(format.runs.empty()){sameFont=sameFont&&cell.style.font==first.font;sameSize=sameSize&&cell.style.fontSize==first.fontSize;}
+        for(const auto& run:format.runs){sameFont=sameFont&&run.font==first.font;sameSize=sameSize&&run.fontSize==first.fontSize;}
+        for(const auto& paragraph:format.paragraphs)sameHorizontal=sameHorizontal&&paragraph.alignment==first.alignment;
+        sameVertical=sameVertical&&cell.style.verticalAlignment==first.verticalAlignment;sameFill=sameFill&&cell.style.fillEnabled==first.fillEnabled;
     }
     auto found=std::find(families.begin(),families.end(),first.font);
     SendMessageW(fontChoice,CB_SETCURSEL,sameFont&&found!=families.end()?static_cast<WPARAM>(found-families.begin()):static_cast<WPARAM>(-1),0);

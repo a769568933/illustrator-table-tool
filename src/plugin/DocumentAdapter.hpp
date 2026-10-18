@@ -45,6 +45,7 @@ public:
     void applyStructure(NativeTable& table,const table::TableModel& model,std::optional<TrackDeletion> deletion=std::nullopt);
     void applyText(NativeTable& table,const table::TableModel& model);
     void applyStyle(NativeTable& table,table::CellRange range,const table::CellStyle& style);
+    void applyStylePatch(NativeTable& table,table::CellRange range,const table::CellStylePatch& patch);
     bool overflows(const NativeCell& cell)const{return cell.layout&&cell.layout->overflows();}
     std::vector<FontChoice> installedFonts();
     void detach(const NativeTable& table);

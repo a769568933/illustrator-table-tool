@@ -45,6 +45,12 @@ void InputWindow::create(HWND parent,std::function<void(const InputEvent&)> targ
     ImmAssociateContextEx(window,nullptr,IACE_DEFAULT);SetTimer(window,1,500,nullptr);
 }
 void InputWindow::emit(const InputEvent& event){if(callback)callback(event);}
+void InputWindow::useInlineComposition(bool value){
+    if(value==inlineComposition)return;
+    if(compositionActive)throw table::ValidationError("Cannot switch composition UI during preedit");
+    inlineComposition=value;
+    if(window&&GetFocus()==window)SendMessageW(window,WM_IME_SETCONTEXT,TRUE,ISC_SHOWUIALL);
+}
 void InputWindow::captureKeyboard(){
     if(keyboardMessages)return;
     if(keyboardOwner&&keyboardOwner!=this)throw table::ValidationError("Another table input owns keyboard routing");
@@ -109,14 +115,17 @@ LRESULT InputWindow::message(UINT message,WPARAM wParam,LPARAM lParam){
     case WM_GETDLGCODE:return DLGC_WANTCHARS|DLGC_WANTARROWS|DLGC_WANTTAB|DLGC_WANTALLKEYS;
     case WM_ERASEBKGND:return 1;
     case WM_PAINT:{PAINTSTRUCT paint{};BeginPaint(window,&paint);EndPaint(window,&paint);return 0;}
-    case WM_IME_STARTCOMPOSITION:compositionActive=true;duplicateChars.clear();pendingHigh=0;return 0;
+    case WM_IME_SETCONTEXT:
+        if(inlineComposition)lParam&=~static_cast<LPARAM>(ISC_SHOWUICOMPOSITIONWINDOW);
+        return DefWindowProcW(window,message,wParam,lParam);
+    case WM_IME_STARTCOMPOSITION:compositionActive=true;duplicateChars.clear();pendingHigh=0;return inlineComposition?0:DefWindowProcW(window,message,wParam,lParam);
     case WM_IME_COMPOSITION:{
         const auto update=reader(window,lParam);
         if(update.resultAvailable){table::validateText(update.result);duplicateChars=update.result;compositionActive=false;++commitSerial;emit({InputKind::Commit,update.result});}
         if(lParam&GCS_COMPSTR){table::validateText(update.preedit);compositionActive=true;emit({InputKind::Composition,update.preedit,0,0,update.caret,static_cast<std::uint32_t>(update.preedit.size())});}
-        return 0;
+        return inlineComposition?0:DefWindowProcW(window,message,wParam,lParam);
     }
-    case WM_IME_ENDCOMPOSITION:if(compositionActive&&!commitPending){compositionActive=false;emit({InputKind::Cancel,{}});}return 0;
+    case WM_IME_ENDCOMPOSITION:if(compositionActive&&!commitPending){compositionActive=false;emit({InputKind::Cancel,{}});}return DefWindowProcW(window,message,wParam,lParam);
     case WM_IME_CHAR:return 0;
     case WM_CHAR:traceStage("input.character.received");if(!compositionActive)character(static_cast<char16_t>(wParam));return 0;
     case WM_UNICHAR:

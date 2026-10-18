@@ -114,7 +114,7 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
             if(!state.editor.beforeStructure())return;state.editor.end(false);
             checked(nested.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state.tool));
             DocumentAdapter adapter(nested);auto& native=state.tables[*state.active];adapter.synchronize(native);
-            auto model=native.model;model.patchStyle(*state.interaction.selection(),patch);adapter.applyText(native,model);
+            adapter.applyStylePatch(native,*state.interaction.selection(),patch);
             invalidate(nested);updateSidebar(state,nested);
         });
     });

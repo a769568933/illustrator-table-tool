@@ -61,7 +61,7 @@ bool EditController::beforeStructure(){
 void EditController::end(bool commitComposition){
     if(session)traceStage("edit.session.end");
     if(commitComposition&&!beforeStructure())return;
-    session.reset();preediting=false;preedit.clear();batchOpen=false;inputFailure=false;overlay={};input.cancelComposition();input.blur();if(host.invalidate)host.invalidate();
+    session.reset();preediting=false;preedit.clear();batchOpen=false;inputFailure=false;overlay={};input.cancelComposition();input.useInlineComposition(true);input.blur();if(host.invalidate)host.invalidate();
 }
 void EditController::apply(Suites& suites,const table::EditChange& change,bool plainInput){
     auto native=current(suites);if(!native)return;
@@ -150,7 +150,11 @@ void EditController::rebuild(Suites& suites){
     auto native=current(suites);if(!native)return;const auto selection=session->selection();const auto bounds=table::Geometry::cellBounds(native->model,selection.cell);
     auto layout=nativeCell(*native,selection.cell).layout;auto display=selection;
     std::optional<std::pair<std::uint32_t,std::uint32_t>> composition;
-    if(preediting){auto preview=table::replaceSelection(native->model,selection,preedit);const auto& cell=preview.model.cellById(selection.cell);
+    const bool filled=native->model.cellById(selection.cell).style.fillEnabled;
+    if(!preediting)input.useInlineComposition(filled);
+    // An alpha annotation cannot erase published glyph outlines. Transparent
+    // cells show preedit in the standard IME UI and retain committed geometry.
+    if(preediting&&filled){auto preview=table::replaceSelection(native->model,selection,preedit);const auto& cell=preview.model.cellById(selection.cell);
         layout=table::layoutText({cell.text,cell.formatting,cell.style,bounds.right-bounds.left,bounds.bottom-bounds.top});
         const auto first=std::min(selection.anchor,selection.caret);
         const auto marked=table::snapEditSelection({selection.cell,first,first+static_cast<std::uint32_t>(preedit.size()),0},layout->boundaries());

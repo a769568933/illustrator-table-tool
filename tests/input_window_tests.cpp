@@ -28,12 +28,15 @@ void custom_window_has_no_edit_children(){
     WNDCLASSEXW registered{};registered.cbSize=sizeof(registered);
     expect(!GetClassInfoExW(module,L"IllustratorTableTool.Input.v3",&registered),"input class released before plugin unload");
 }
-void ime_commit_once(){
+void ime_commit_once(bool inlineUI){
     std::vector<InputEvent> events;CompositionUpdate update;
     InputWindow input;input.create(nullptr,[&](const InputEvent& e){events.push_back(e);},[&](HWND,LPARAM){return update;});
+    input.useInlineComposition(inlineUI);
     SendMessageW(input.handle(),WM_IME_STARTCOMPOSITION,0,0);
     update={u"zhong",u"",5,false};SendMessageW(input.handle(),WM_IME_COMPOSITION,0,GCS_COMPSTR);
     expect(input.composing(),"composition remains transient");
+    bool refused=false;try{input.useInlineComposition(!inlineUI);}catch(const ValidationError&){refused=true;}
+    expect(refused,"composition UI mode cannot change before commit or cancel");
     expect(!input.requestCompositionCommit(),"pending IME prevents structural action");
     update={u"",u"中",0,true};SendMessageW(input.handle(),WM_IME_COMPOSITION,0,GCS_RESULTSTR);
     SendMessageW(input.handle(),WM_IME_ENDCOMPOSITION,0,0);SendMessageW(input.handle(),WM_CHAR,u'中',0);
@@ -42,9 +45,10 @@ void ime_commit_once(){
     SendMessageW(input.handle(),WM_KEYDOWN,'A',0);SendMessageW(input.handle(),WM_CHAR,u'a',0);
     expect(events.back().kind==InputKind::Insert&&events.back().text==u"a","next physical key remains available");
 }
-void ime_cancel_keeps_model(){
+void ime_cancel_keeps_model(bool inlineUI){
     std::vector<InputEvent> events;InputWindow input;
     input.create(nullptr,[&](const InputEvent& e){events.push_back(e);},[](HWND,LPARAM){return CompositionUpdate{u"wen",u"",3,false};});
+    input.useInlineComposition(inlineUI);
     SendMessageW(input.handle(),WM_IME_STARTCOMPOSITION,0,0);SendMessageW(input.handle(),WM_IME_COMPOSITION,0,GCS_COMPSTR);
     input.cancelComposition();expect(!input.composing(),"cancel clears preedit");
     int inserted=0;for(const auto& e:events)if(e.kind==InputKind::Commit||e.kind==InputKind::Insert)++inserted;
@@ -151,6 +155,6 @@ void transparent_preview_keeps_canvas_visible(){
 }
 }
 int main(){try{
-    transparent_preview_keeps_canvas_visible();custom_window_has_no_edit_children();ime_commit_once();ime_cancel_keeps_model();surrogate_input_is_atomic();focus_survives_host_callback_restore();editor_keys_precede_host_accelerators();clipboard_unlock_on_failure();pt_dpi_roundtrip();
+    transparent_preview_keeps_canvas_visible();custom_window_has_no_edit_children();ime_commit_once(true);ime_commit_once(false);ime_cancel_keeps_model(true);ime_cancel_keeps_model(false);surrogate_input_is_atomic();focus_survives_host_callback_restore();editor_keys_precede_host_accelerators();clipboard_unlock_on_failure();pt_dpi_roundtrip();
     std::cout<<checks<<" input and preview checks passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

@@ -55,17 +55,20 @@ int main(){try{
     owner=CreateWindowExW(0,L"STATIC",L"",WS_POPUP,-32000,-32000,1,1,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     if(!owner)throw std::runtime_error("fixture window unavailable");
     {
-        auto model=table::TableModel::create(1,1,100,40);const auto cell=model.cellAt(0,0).id;model.setText(cell,u"old");
+        auto model=table::TableModel::create(1,1,100,80);const auto cell=model.cellAt(0,0).id;model.setText(cell,u"old words on two lines");
         NativeTable native{model};native.document=handle<AIDocumentHandle>(100);native.group=handle<AIArtHandle>(1);native.frame=handle<AIArtHandle>(2);native.origin={0,400};native.publishedStamp=10;
-        native.cells.push_back({cell,handle<AIArtHandle>(3),handle<AIArtHandle>(4),table::layoutText({u"old",{},table::CellStyle{},100,40})});
+        native.cells.push_back({cell,handle<AIArtHandle>(3),handle<AIArtHandle>(4),table::layoutText({model.cellById(cell).text,{},table::CellStyle{},100,80})});
         EditController editor;editor.configure(&basic,handle<SPPluginRef>(1),EditorHost{
             [&](){return &native;},[]{return std::uint64_t(1);},[]{},[](const std::wstring&){},[](const std::function<void()>& operation){operation();},[](table::CellId){}
         });
         editor.begin(native,cell,{10,10});
         AIAnnotatorMessage message{};message.drawer=handle<AIAnnotatorDrawer*>(1);Suites suites(&basic);editor.draw(suites,&message);
         if(!editor.editing()||images!=1)throw std::runtime_error("editor begin must publish a visible caret preview using artwork-coordinate bounds");
-        const auto published=lastPNG;editor.handle({InputKind::Composition,u"replacement",0,0,2,11});editor.draw(suites,&message);
-        if(lastPNG!=published||native.model.cellById(cell).text!=u"old")throw std::runtime_error("Transparent composition must keep published glyphs unchanged and delegate preedit to IME UI");
+        editor.handle({InputKind::Key,{},'A',InputControl});editor.draw(suites,&message);const auto published=lastPNG;
+        editor.handle({InputKind::Composition,u"replacement that reflows",0,0,2,24});editor.draw(suites,&message);
+        if(lastPNG!=published||native.model.cellById(cell).text!=u"old words on two lines")throw std::runtime_error("Transparent composition must keep published glyphs unchanged and delegate preedit to IME UI");
+        editor.handle({InputKind::Cancel,{}});editor.draw(suites,&message);
+        if(lastPNG!=published||!editor.editing())throw std::runtime_error("Cancel keeps transparent text and selection intact");
         editor.end(false);editor.shutdown();
     }
     DestroyWindow(owner);owner=nullptr;

@@ -18,6 +18,7 @@ class InputWindow {
     std::function<void(const InputEvent&)> callback;CompositionReader reader;
     bool compositionActive=false,commitPending=false;std::uint64_t commitSerial=0;std::u16string duplicateChars;char16_t pendingHigh=0;
     bool focusRequested=false;
+    bool inlineComposition=true;
     void emit(const InputEvent& event);
     void character(char16_t value);
     LRESULT message(UINT message,WPARAM wParam,LPARAM lParam);
@@ -32,6 +33,7 @@ public:
     void create(HWND owner,std::function<void(const InputEvent&)> callback,CompositionReader reader={});
     HWND handle()const{return window;}
     bool composing()const{return compositionActive;}
+    void useInlineComposition(bool value);
     void focus();
     void blur();
     void setCaretScreen(POINT point);

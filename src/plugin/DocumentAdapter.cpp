@@ -211,6 +211,7 @@ void DocumentAdapter::applyGeometry(NativeTable& native,const table::TableModel&
 void DocumentAdapter::applyStructure(NativeTable& native,const table::TableModel& model,std::optional<TrackDeletion>){apply(native,model,"修改表格结构");}
 void DocumentAdapter::applyText(NativeTable& native,const table::TableModel& model){apply(native,model,"输入表格文字");}
 void DocumentAdapter::applyStyle(NativeTable& native,table::CellRange range,const table::CellStyle& style){auto model=native.model;model.setStyle(range,style);apply(native,model,"修改单元格样式");}
+void DocumentAdapter::applyStylePatch(NativeTable& native,table::CellRange range,const table::CellStylePatch& patch){auto model=native.model;model.patchStyle(range,patch);apply(native,model,"修改单元格样式");}
 std::vector<FontChoice> DocumentAdapter::installedFonts(){std::vector<FontChoice> result;for(auto name:table::installedFontFamilies())result.push_back({name,name});return result;}
 void DocumentAdapter::detach(const NativeTable& native){
     if(!valid(native))throw table::ValidationError("Table is not editable");DictionaryLease d{dictionaries};checked(art->GetDictionary(native.group,&d.value));
