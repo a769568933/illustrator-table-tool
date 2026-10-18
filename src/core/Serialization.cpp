@@ -49,7 +49,7 @@ std::u16string utf16(const std::string& value) {
     return result;
 }
 void writeText(std::ostream& out,const std::u16string& text) {
-    auto bytes=utf8(text);if(out.tellp()+static_cast<std::streamoff>(bytes.size()+32)>maxDocumentBytes) invalid();
+    auto bytes=utf8(text);if(out.tellp()+static_cast<std::streamoff>(bytes.size()+32)>static_cast<std::streamoff>(maxDocumentBytes)) invalid();
     out<<bytes.size()<<'\n';out.write(bytes.data(),static_cast<std::streamsize>(bytes.size()));out<<'\n';
 }
 template<class T> T number(std::istream& in) {T result{};if(!(in>>result)) invalid();return result;}
@@ -81,7 +81,7 @@ void writeFormatting(std::ostream& out,const TextFormatting& format) {
     }
     out<<format.paragraphs.size()<<'\n';
     for(const auto& p:format.paragraphs) out<<p.start<<' '<<p.alignment<<'\n';
-    if(out.tellp()>maxDocumentBytes) invalid();
+    if(out.tellp()>static_cast<std::streamoff>(maxDocumentBytes)) invalid();
 }
 TextFormatting readFormatting(std::istream& in,std::u16string_view text) {
     TextFormatting result;auto count=number<std::size_t>(in);

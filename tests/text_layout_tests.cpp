@@ -37,8 +37,8 @@ void outline_holes_and_curves(){
 }
 void mixed_size_and_paragraphs(){
     auto r=request(u"AA");r.style.font=u"Arial";r.style.padding=0;
-    auto small=layoutText(r);r.style.fontSize=24;auto large=layoutText(r);
-    expect(std::abs(large->caret(2).left-2*small->caret(2).left)<0.1,"point size correctly converted to DIPs and back");
+    auto twelvePoint=layoutText(r);r.style.fontSize=24;auto twentyFourPoint=layoutText(r);
+    expect(std::abs(twentyFourPoint->caret(2).left-2*twelvePoint->caret(2).left)<0.1,"point size correctly converted to DIPs and back");
     r=request(u"A\nB");r.formatting={{{0,1,u"Arial",24,{}},{2,1,u"Arial",12,{1,0,0}}},{{0,0},{2,2}}};
     auto mixed=layoutText(r);
     expect(mixed->caret(2).left>70,"second paragraph right aligned independently");
