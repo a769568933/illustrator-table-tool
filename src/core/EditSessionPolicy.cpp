@@ -1,7 +1,11 @@
 #include "table/EditSessionPolicy.hpp"
 #include <algorithm>
+#include <cmath>
 
 namespace table {
+bool shouldBeginCellEdit(CellId current,CellId previous,bool sameTable,bool hostDoubleClick,bool shift,std::uint32_t elapsed,std::uint32_t interval,double distancePixels){
+    return current&&sameTable&&!shift&&(hostDoubleClick||(current==previous&&elapsed<=interval&&std::isfinite(distancePixels)&&distancePixels<=4));
+}
 bool BoundEditSession::matches(EditBinding current)const{
     return binding.document&&binding.group&&binding.document==current.document&&binding.group==current.group&&binding.generation==current.generation;
 }

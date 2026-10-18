@@ -4,6 +4,7 @@
 
 namespace {
 constexpr wchar_t className[]=L"IllustratorTableTool.Input.v3";
+constexpr UINT deferredFocus=WM_APP+0x421;
 std::uint32_t modifiers(){return ((GetKeyState(VK_SHIFT)&0x8000)?InputShift:0)|((GetKeyState(VK_CONTROL)&0x8000)?InputControl:0)|((GetKeyState(VK_MENU)&0x8000)?InputAlt:0);}
 struct ImeContext {HWND window;HIMC value;explicit ImeContext(HWND h):window(h),value(ImmGetContext(h)){}~ImeContext(){if(value)ImmReleaseContext(window,value);}};
 struct ClipboardScope {explicit ClipboardScope(HWND h){if(!OpenClipboard(h))throw table::ValidationError("Clipboard is busy");}~ClipboardScope(){CloseClipboard();}};
@@ -42,8 +43,8 @@ void InputWindow::create(HWND parent,std::function<void(const InputEvent&)> targ
     ImmAssociateContextEx(window,nullptr,IACE_DEFAULT);SetTimer(window,1,500,nullptr);
 }
 void InputWindow::emit(const InputEvent& event){if(callback)callback(event);}
-void InputWindow::focus(){if(window){ShowWindow(window,SW_SHOWNOACTIVATE);SetFocus(window);}}
-void InputWindow::blur(){if(window){ShowWindow(window,SW_HIDE);if(GetFocus()==window&&owner)SetFocus(owner);}}
+void InputWindow::focus(){if(window){focusRequested=true;if(!PostMessageW(window,deferredFocus,0,0))throw table::ValidationError("Cannot queue editor focus");}}
+void InputWindow::blur(){focusRequested=false;if(window){ShowWindow(window,SW_HIDE);if(GetFocus()==window&&owner)SetFocus(owner);}}
 void InputWindow::setCaretScreen(POINT point){
     if(!window)return;if(owner)ScreenToClient(owner,&point);
     SetWindowPos(window,nullptr,point.x,point.y,1,1,SWP_NOZORDER|SWP_NOACTIVATE);
@@ -77,6 +78,7 @@ void InputWindow::character(char16_t value){
 }
 LRESULT InputWindow::message(UINT message,WPARAM wParam,LPARAM lParam){
     switch(message){
+    case deferredFocus:if(focusRequested){focusRequested=false;ShowWindow(window,SW_SHOWNOACTIVATE);SetFocus(window);if(GetFocus()!=window)emit({InputKind::Error,u"无法进入文字编辑，请重新双击单元格。"});}return 0;
     case WM_GETDLGCODE:return DLGC_WANTCHARS|DLGC_WANTARROWS|DLGC_WANTTAB|DLGC_WANTALLKEYS;
     case WM_ERASEBKGND:return 1;
     case WM_PAINT:{PAINTSTRUCT paint{};BeginPaint(window,&paint);EndPaint(window,&paint);return 0;}
@@ -114,7 +116,7 @@ LRESULT CALLBACK InputWindow::procedure(HWND window,UINT message,WPARAM wParam,L
     try{return self->message(message,wParam,lParam);}catch(...){try{self->emit({InputKind::Error,u"输入未完成，请重新选择单元格后重试。"});}catch(...){}return 0;}
 }
 void InputWindow::destroy(){
-    callback={};
+    focusRequested=false;callback={};
     if(window){const auto original=window;cancelComposition();KillTimer(original,1);if(GetFocus()==original&&owner)SetFocus(owner);DestroyWindow(original);window=nullptr;}
     if(module&&UnregisterClassW(className,module))module=nullptr;
 }

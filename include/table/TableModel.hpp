@@ -28,6 +28,7 @@ public:
     void setRichText(CellId id,const std::u16string& text,const TextFormatting& formatting);
     void setStyle(CellRange range,const CellStyle& style);
     void resizeBoundary(bool vertical, int boundary, double delta);
+    void distributeTracks(bool vertical,int first,int count);
     void scale(double horizontal,double vertical);
     void merge(CellRange range);
     void split(CellId id);

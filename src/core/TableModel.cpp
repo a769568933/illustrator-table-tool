@@ -83,6 +83,15 @@ void TableModel::resizeBoundary(bool vertical, int boundary, double delta) {
     sizes[boundary-1]+=delta;
     if (boundary<static_cast<int>(sizes.size())) sizes[boundary]-=delta;
 }
+void TableModel::distributeTracks(bool vertical,int first,int count){
+    auto& tracks=vertical?columnWidths:rowHeights;
+    if(first<0||count<1||first>=static_cast<int>(tracks.size())||count>static_cast<int>(tracks.size())-first)throw ValidationError("Invalid distribution range");
+    if(count==1)return;
+    const auto begin=tracks.begin()+first,end=begin+count;
+    const double total=std::accumulate(begin,end,0.0),average=total/count;
+    if(!std::isfinite(average)||average+1e-8<minimumTrack)throw ValidationError("Invalid distributed track size");
+    std::fill(begin,end,std::max(average,minimumTrack));
+}
 void TableModel::scale(double horizontal,double vertical) {
     if(!std::isfinite(horizontal)||!std::isfinite(vertical)||horizontal<=0||vertical<=0) throw ValidationError("Invalid table scale");
     auto next=*this;

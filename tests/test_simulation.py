@@ -61,6 +61,20 @@ class SimulationTests(unittest.TestCase):
         state=server.simulate(executable,{'action':'command','state':restored['state'],'selection':[0,0,0,1],'command':1})
         self.assertEqual([(c['text'],c['size']) for c in state['cells']],[('甲',12),('乙',18)])
 
+    def test_distribute_commands_preserve_merged_table(self):
+        executable=Path(os.environ['TABLE_SIMULATOR'])
+        state=server.simulate(executable,{'action':'create','rows':3,'columns':3})
+        state=server.simulate(executable,{'action':'sample','state':state['state']})
+        state=server.simulate(executable,{'action':'command','state':state['state'],'selection':[0,0,1,1],'command':0})
+        before=[(c['id'],c['text'],c['rowSpan'],c['columnSpan']) for c in state['cells']]
+        for command in (8,9):
+            next_state=server.simulate(executable,{'action':'command','state':state['state'],'selection':[0,0,2,2],'command':command})
+            self.assertAlmostEqual(next_state['width'],state['width'],places=6)
+            self.assertAlmostEqual(next_state['height'],state['height'],places=6)
+            self.assertEqual([(c['id'],c['text'],c['rowSpan'],c['columnSpan']) for c in next_state['cells']],before)
+            state=next_state
+        self.assertEqual(server.simulate(executable,{'action':'inspect','state':state['state']})['state'],state['state'])
+
     def test_repeated_sidebar_actions_preserve_valid_saved_tables(self):
         executable = Path(os.environ['TABLE_SIMULATOR'])
         rng = random.Random(20261016)

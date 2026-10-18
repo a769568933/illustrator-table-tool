@@ -101,7 +101,7 @@ public:
             if(newline==std::u16string::npos)break;
             start=end+1;if(stops.back()!=start)stops.push_back(start);
         }
-        overflow=overflow||y>height+0.01;
+        overflow=!request.text.empty()&&(overflow||y>height+0.01);
         const auto graphemes=graphemeBoundaries(request.text);
         stops.erase(std::remove_if(stops.begin(),stops.end(),[&](auto p){return !std::binary_search(graphemes.begin(),graphemes.end(),p);}),stops.end());
     }

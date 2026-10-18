@@ -16,6 +16,7 @@ class InputWindow {
     HWND window=nullptr,owner=nullptr;HINSTANCE module=nullptr;
     std::function<void(const InputEvent&)> callback;CompositionReader reader;
     bool compositionActive=false,commitPending=false;std::uint64_t commitSerial=0;std::u16string duplicateChars;char16_t pendingHigh=0;
+    bool focusRequested=false;
     void emit(const InputEvent& event);
     void character(char16_t value);
     LRESULT message(UINT message,WPARAM wParam,LPARAM lParam);

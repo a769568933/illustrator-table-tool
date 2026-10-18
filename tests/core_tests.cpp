@@ -230,7 +230,30 @@ void sidebarWorkflow() {
     rejects([&]{applyCommand(model,{0,0,model.rows()-1,0},Command::DeleteRows);});
 }
 }
+void distribute_selected_tracks(){
+    using namespace table;
+    auto model=TableModel::create(4,4,120,80);model.resizeBoundary(true,2,8);model.resizeBoundary(false,2,6);
+    model.setText(model.cellAt(1,1).id,u"保留内容");model.merge({1,1,2,2});
+    const auto merged=model.cellAt(1,1).id;const auto original=serialize(model);
+    const auto columns=applyCommand(model,{2,2,1,1},Command::DistributeColumns);
+    expect(std::abs(columns.widths()[1]-columns.widths()[2])<1e-8,"selected columns evenly distributed");
+    expect(columns.widths()[0]==model.widths()[0]&&columns.widths()[3]==model.widths()[3],"outside columns unchanged");
+    expect(columns.width()==model.width()&&columns.height()==model.height(),"distribution preserves table extent");
+    expect(columns.cellById(merged).text==model.cellById(merged).text&&columns.cellById(merged).columnSpan==2,"distribution preserves merged text and span");
+    const auto rows=applyCommand(columns,{1,1,2,2},Command::DistributeRows);
+    expect(std::abs(rows.heights()[1]-rows.heights()[2])<1e-8,"selected rows evenly distributed");
+    expect(rows.heights()[0]==model.heights()[0]&&rows.heights()[3]==model.heights()[3],"outside rows unchanged");
+    expect(serialize(model)==original,"distribution does not mutate undo source");
+    expect(serialize(deserialize(serialize(rows)))==serialize(rows),"distributed sizes survive save roundtrip");
+    auto single=applyCommand(model,{1,1,1,1},Command::DistributeRows);
+    expect(serialize(single)==original,"one selected row is a no-op");
+    rejects([&]{applyCommand(model,{0,0,9,3},Command::DistributeRows);});
+    auto minimal=TableModel::create(100,20,20*minimumTrack,100*minimumTrack);
+    minimal=applyCommand(minimal,{0,0,99,19},Command::DistributeRows);
+    minimal=applyCommand(minimal,{0,0,99,19},Command::DistributeColumns);
+    expect(serialize(deserialize(serialize(minimal)))==serialize(minimal),"minimum-size distribution stays serializable");
+}
 int main() {
-    try { creation(); geometry(); interaction(); merging(); structure(); persistence(); styling(); sidebarWorkflow(); std::cout << checks << " checks passed\n"; return 0; }
+    try { creation(); geometry(); interaction(); merging(); structure(); persistence(); styling(); sidebarWorkflow(); distribute_selected_tracks(); std::cout << checks << " checks passed\n"; return 0; }
     catch (const std::exception& error) { std::cerr << "FAIL after " << checks << " checks: " << error.what() << '\n'; return 1; }
 }

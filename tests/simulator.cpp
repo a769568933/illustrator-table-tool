@@ -73,8 +73,9 @@ int main(int argc,char** argv) {
             interaction.pointerDown(model,center(selected.lastRow,selected.lastColumn),true,1);selected=*interaction.selection();
         } else if(action=="command") {
             if(argc!=7) throw ValidationError("Missing structural command");
-            model=applyCommand(model,selected,static_cast<Command>(integer(argv[6])));
-            selected={0,0,0,0};
+            const auto command=static_cast<Command>(integer(argv[6]));
+            model=applyCommand(model,selected,command);
+            if(command!=Command::DistributeRows&&command!=Command::DistributeColumns)selected={0,0,0,0};
         } else if(action=="sample") {
             model.setText(model.cellAt(0,0).id,u"产品名称");model.setText(model.cellAt(0,1).id,u"数量");
             model.setText(model.cellAt(1,0).id,u"中文文字 ABC");model.setText(model.cellAt(1,1).id,u"12");

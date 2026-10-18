@@ -54,6 +54,19 @@ void surrogate_input_is_atomic(){
     SendMessageW(input.handle(),WM_CHAR,0xde00,0);
     expect(events.size()==1&&events.front().text==u"\U0001F600","surrogate pair emitted as one insertion");
 }
+void focus_survives_host_callback_restore(){
+    HWND owner=CreateWindowExW(0,L"STATIC",L"",WS_POPUP,-32000,-32000,1,1,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+    expect(owner!=nullptr,"test owner created");
+    {
+        InputWindow input;input.create(owner,[](const InputEvent&){});
+        auto dispatch=[&]{MSG message{};while(PeekMessageW(&message,input.handle(),0,0,PM_REMOVE))DispatchMessageW(&message);};
+        input.focus();SetFocus(owner);dispatch();
+        expect(GetFocus()==input.handle(),"editor receives focus after host restores its window at callback exit");
+        input.focus();input.blur();dispatch();
+        expect(GetFocus()!=input.handle(),"cancelled focus request cannot reclaim focus after exit");
+    }
+    DestroyWindow(owner);
+}
 void clipboard_unlock_on_failure(){
     // Own memory only: tests must not replace the user's system clipboard.
     HGLOBAL memory=GlobalAlloc(GMEM_MOVEABLE,8);expect(memory!=nullptr,"clipboard fixture allocated");
@@ -77,6 +90,6 @@ void pt_dpi_roundtrip(){
 }
 }
 int main(){try{
-    custom_window_has_no_edit_children();ime_commit_once();ime_cancel_keeps_model();surrogate_input_is_atomic();clipboard_unlock_on_failure();pt_dpi_roundtrip();
+    custom_window_has_no_edit_children();ime_commit_once();ime_cancel_keeps_model();surrogate_input_is_atomic();focus_survives_host_callback_restore();clipboard_unlock_on_failure();pt_dpi_roundtrip();
     std::cout<<checks<<" input and preview checks passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

@@ -42,7 +42,7 @@ struct State {
     AIMenuItemHandle acceptance=nullptr;
     AITimerHandle acceptanceTimer=nullptr;
 #endif
-    std::array<AIMenuItemHandle,10> commands{};
+    std::array<AIMenuItemHandle,12> commands{};
     AIToolHandle tool=nullptr;
     AIAnnotatorHandle annotator=nullptr;
     bool placing=false, selectedTool=false;
@@ -50,7 +50,7 @@ struct State {
     std::vector<NativeTable> tables;
     std::optional<std::size_t> active;
     table::Interaction interaction;
-    ULONGLONG lastDown=0;
+    DWORD lastDown=0;
     table::CellId lastCell=0;
     table::Point lastPoint;
     Sidebar sidebar;
@@ -70,7 +70,7 @@ struct MutationScope {
     ~MutationScope(){state.mutating=previous;}
 };
 void showSidebar(State& state,Suites& suites) {
-    std::array<AIMenuItemHandle,12> items{state.create,state.edit};
+    std::array<AIMenuItemHandle,14> items{state.create,state.edit};
     std::copy(state.commands.begin(),state.commands.end(),items.begin()+2);
     state.sidebar.create(state.basic,state.plugin,suites,items);state.sidebar.show(suites);
 }
@@ -83,6 +83,7 @@ void updateSidebar(State& state,Suites& suites) {
     const auto range=*state.interaction.selection();
     auto message=std::to_wstring(native.model.rows())+L" 行 × "+std::to_wstring(native.model.columns())+L" 列\n选区：行 "+
         std::to_wstring(range.firstRow+1)+L"–"+std::to_wstring(range.lastRow+1)+L"，列 "+std::to_wstring(range.firstColumn+1)+L"–"+std::to_wstring(range.lastColumn+1);
+    if(state.editor.editing())message+=L"\n格内编辑中，Esc 退出，Tab 切格。";
     state.sidebar.update(true,message);
 }
 void invalidate(Suites& suites) {
@@ -122,7 +123,7 @@ void startup(SPMessageData* data,Suites& suites,State& state) {
     checked(timers->AddTimer(data->self,"IllustratorTableTool.AcceptanceTimer",5*kTicksPerSecond,&state.acceptanceTimer));
     checked(timers->SetTimerActive(state.acceptanceTimer,false));
 #endif
-    const char* names[]={"合并单元格","拆分单元格","在上方插入行","在下方插入行","在左侧插入列","在右侧插入列","删除所选行","删除所选列","转换为普通对象","单元格样式…"};
+    const char* names[]={"合并单元格","拆分单元格","在上方插入行","在下方插入行","在左侧插入列","在右侧插入列","删除所选行","删除所选列","转换为普通对象","单元格样式…","平均行高","平均列宽"};
     for(std::size_t i=0;i<state.commands.size();++i) {
         auto key="IllustratorTableTool.Command"+std::to_string(i);add(key.c_str(),names[i],&state.commands[i]);
     }
@@ -162,6 +163,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
         state.interaction.cancel(); state.placing=false; invalidate(suites); return;
     }
     if(is(selector,kSelectorAIToolMouseDown)) {
+        const DWORD eventTime=static_cast<DWORD>(GetMessageTime());
         if(state.editor.editing()&&!state.editor.beforeStructure())return;
         if(state.placing&&state.pending) {
             auto model=*state.pending;
@@ -194,15 +196,15 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
         if(oldGroup!=table.group) {state.editor.end(false);state.interaction.clearSelection();state.lastCell=0;}
         auto point=local(table,message->cursor);
         auto hit=table::Geometry::hitTest(table.model,point,zoom,3,table.scaleX,table.scaleY);
-        auto now=GetTickCount64();
-        if(hit.kind==table::HitKind::Cell && hit.cell==state.lastCell && now-state.lastDown<=GetDoubleClickTime() &&
-            table::Geometry::screenDistance(point,state.lastPoint,zoom,table.scaleX,table.scaleY)<=4) {
+        const bool shift=message->event&&(message->event->modifiers&aiEventModifiers_shiftKey)!=0;
+        const bool hostDouble=message->event&&(message->event->modifiers&aiEventModifiers_doubleClick)!=0;
+        if(hit.kind==table::HitKind::Cell&&table::shouldBeginCellEdit(hit.cell,state.lastCell,oldGroup==table.group,hostDouble,shift,
+            eventTime-state.lastDown,GetDoubleClickTime(),table::Geometry::screenDistance(point,state.lastPoint,zoom,table.scaleX,table.scaleY))) {
             state.lastCell=0; state.interaction.cancel();
             state.editor.begin(table,hit.cell,point);
             return;
         }
-        state.lastDown=now; state.lastCell=hit.cell; state.lastPoint=point;
-        bool shift=message->event && (message->event->modifiers&aiEventModifiers_shiftKey)!=0;
+        state.lastDown=eventTime; state.lastCell=hit.cell; state.lastPoint=point;
         if(!shift&&hit.kind==table::HitKind::Cell&&state.editor.pointer(table,hit.cell,point,false)){invalidate(suites);return;}
         if(state.editor.editing())state.editor.end(false);
         state.interaction.pointerDown(table.model,point,shift,zoom,table.scaleX,table.scaleY);
@@ -376,6 +378,8 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
                     adapter.applyStyle(table,selection,*style);invalidate(suites);updateSidebar(*state,suites);return kNoErr;
                 }
                 if(index<8) model=table::applyCommand(model,selection,static_cast<table::Command>(index));
+                if(index==10)model=table::applyCommand(model,selection,table::Command::DistributeRows);
+                if(index==11)model=table::applyCommand(model,selection,table::Command::DistributeColumns);
                 traceStage("command.model.done");
                 checked(suites.get<AIToolSuite>(kAIToolSuite,kAIToolVersion)->SetSelectedTool(state->tool));
                 traceStage("command.tool.selected");
@@ -387,13 +391,14 @@ extern "C" ASAPI ASErr PluginMain(char* caller,char* selector,void* message) {
                     adapter.applyStructure(table,model,deletion);
                 }
                 traceStage("command.artwork.done");
-                state->interaction.clearSelection();invalidate(suites);
+                if(index<10)state->interaction.clearSelection();invalidate(suites);
             }
         } else if(is(caller,kCallerAITool)) {MutationScope operation(*state);toolEvent(*state,suites,selector,static_cast<AIToolMessage*>(message));}
         else if(is(caller,kCallerAIAnnotation)&&is(selector,kSelectorAIDrawAnnotation)) draw(*state,suites,static_cast<AIAnnotatorMessage*>(message));
         if(!is(caller,kCallerAIAnnotation)) updateSidebar(*state,suites);
         return kNoErr;
-    } catch(const table::ValidationError&) {
+    } catch(const table::ValidationError& error) {
+        traceStage(error.what());
         if(is(caller,kCallerAIMenu)) MessageBoxW(nullptr,L"无法执行此操作。请检查选区是否完整、是否会删除整张表，以及表格是否旋转、锁定或缺少对象。",L"检查表格和选区",MB_OK|MB_ICONINFORMATION);
         return kBadParameterErr;
     }

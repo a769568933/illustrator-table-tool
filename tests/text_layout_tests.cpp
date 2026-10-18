@@ -63,6 +63,13 @@ void mixed_size_and_paragraphs(){
     expect(red,"character colors reach vector output");
 }
 void overflow_and_empty(){
+    for(double height:{mm(2),mm(4),mm(6)}){
+        auto blank=request(u"");blank.heightPt=height;
+        auto layout=layoutText(blank);
+        expect(!layout->overflows(),"empty short cell has no overflow marker");
+        expect(layout->hitTest({10,height/2})==0,"short empty cell remains editable");
+        expect(layout->caret(0).bottom>layout->caret(0).top,"empty short cell retains caret metrics");
+    }
     auto r=request(u"中文中文中文中文中文中文");r.widthPt=20;r.heightPt=10;
     auto overflowing=layoutText(r);expect(overflowing->overflows(),"overflow detected without discarding text");
     expect(overflowing->boundaries().back()==12,"overflow content remains editable");

@@ -1,5 +1,6 @@
 #include "EditController.hpp"
 #include "HostCommand.hpp"
+#include "Trace.hpp"
 #include "AIContext.h"
 #include "AIDocumentView.h"
 #include "AIAnnotatorDrawer.h"
@@ -24,11 +25,13 @@ NativeTable* EditController::current(Suites& suites){
     native->model.cellById(session->selection().cell);return native;
 }
 void EditController::begin(NativeTable& native,table::CellId id,table::Point point){
+    traceStage("edit.begin");
     if(session&&!beforeStructure())return;
     invokeHostCommand(basic,plugin,[&](Suites& suites){
         DocumentAdapter adapter(suites);if(!adapter.valid(native))throw table::ValidationError("Table cannot be edited");
         AIWindowRef application=nullptr;checked(suites.get<AIAppContextSuite>(kAIAppContextSuite,kAIAppContextVersion)->GetPlatformAppWindow(&application));owner=application;
         if(!input.handle())input.create(owner,[this](const InputEvent& event){handle(event);});
+        traceStage("edit.window.ready");
         const auto bounds=table::Geometry::cellBounds(native.model,id);const auto& cell=nativeCell(native,id);
         const auto caret=cell.layout->hitTest({point.x-bounds.left,point.y-bounds.top});
         session.emplace(identity(native,host.generation()),table::EditSession{id,caret,caret,0});
@@ -37,7 +40,7 @@ void EditController::begin(NativeTable& native,table::CellId id,table::Point poi
         checked(suites.get<AIDocumentViewSuite>(kAIDocumentViewSuite,kAIDocumentViewVersion)->FixedArtworkPointToViewPoint(nullptr,&artwork,&viewPoint));
         POINT cursor{};if(!GetCursorPos(&cursor))throw table::ValidationError("Cannot locate editor caret");if(owner)ScreenToClient(owner,&cursor);
         viewToOwner={cursor.x-viewPoint.h,cursor.y-viewPoint.v};
-        host.selectCell(id);rebuild(suites);input.focus();host.invalidate();
+        host.selectCell(id);rebuild(suites);traceStage("edit.preview.ready");input.focus();traceStage("edit.focus.queued");host.invalidate();
     });
 }
 bool EditController::pointer(NativeTable& native,table::CellId id,table::Point point,bool extend){

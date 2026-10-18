@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(IllustratorTableTool VERSION 0.2.0 LANGUAGES CXX)
+project(IllustratorTableTool VERSION 0.2.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(TABLE_BUILD_PLUGIN "Build the Illustrator native plugin (requires the Adobe SDK)" ON)

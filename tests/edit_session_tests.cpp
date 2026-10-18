@@ -19,5 +19,12 @@ int main(){try{
     expect(!mayAppendTyping(true,true,false,3,3,true),"nested context never retagged");
     expect(!mayAppendTyping(false,true,true,3,3,true),"paste and IME commits have own undo");
     expect(!mayAppendTyping(true,false,true,3,3,true),"navigation breaks batch");
+    expect(shouldBeginCellEdit(1,1,true,true,false,1400,500,0),"host double click survives expensive table discovery");
+    expect(shouldBeginCellEdit(1,1,true,false,false,120,500,2),"timed double click fallback remains available");
+    expect(!shouldBeginCellEdit(1,1,true,true,true,120,500,0),"shift double click preserves region selection");
+    expect(!shouldBeginCellEdit(1,1,false,true,false,120,500,0),"double click cannot cross tables");
+    expect(!shouldBeginCellEdit(2,1,true,false,false,120,500,0),"fallback double click cannot cross cells");
+    expect(!shouldBeginCellEdit(1,1,true,false,false,120,500,9),"fallback double click respects screen distance");
+    expect(!shouldBeginCellEdit(1,1,true,false,false,900,500,0),"separate clicks remain selections");
     std::cout<<checks<<" session policy checks passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

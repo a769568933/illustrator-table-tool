@@ -22,6 +22,8 @@ TableModel applyCommand(const TableModel& source,CellRange selection,Command com
     case Command::InsertColumnRight:model.insertColumns(selection.lastColumn+1,1);break;
     case Command::DeleteRows:model.eraseRows(selection.firstRow,selection.lastRow-selection.firstRow+1);break;
     case Command::DeleteColumns:model.eraseColumns(selection.firstColumn,selection.lastColumn-selection.firstColumn+1);break;
+    case Command::DistributeRows:model.distributeTracks(false,selection.firstRow,selection.lastRow-selection.firstRow+1);break;
+    case Command::DistributeColumns:model.distributeTracks(true,selection.firstColumn,selection.lastColumn-selection.firstColumn+1);break;
     default:throw ValidationError("Unknown table command");
     }
     return model;

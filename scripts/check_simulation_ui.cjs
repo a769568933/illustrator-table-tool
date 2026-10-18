@@ -20,6 +20,16 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   await page.locator('#editor').press('Tab');
   await page.getByText('文字编辑：第 1 行，第 2 列',{exact:true}).waitFor();
   console.log('Canvas text input and Tab passed');
+  await page.locator('#editor').press('Escape');
+  await page.getByRole('gridcell',{name:'第1行第1列',exact:true}).click();
+  await page.getByText('选区：第 1–1 行，第 1–1 列',{exact:true}).waitFor();
+  await page.getByRole('gridcell',{name:'第3行第3列',exact:true}).click({modifiers:['Shift']});
+  await page.getByText('选区：第 1–3 行，第 1–3 列',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'平均行高',exact:true}).click();
+  await page.getByText('选区：第 1–3 行，第 1–3 列',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'平均列宽',exact:true}).click();
+  await page.getByText('选区：第 1–3 行，第 1–3 列',{exact:true}).waitFor();
+  console.log('Sidebar distribution commands retain the selected region');
   if(process.env.SIMULATION_SCREENSHOT)await page.screenshot({path:process.env.SIMULATION_SCREENSHOT,fullPage:true});
  }finally{await browser.close();}
 })().catch(e=>{console.error(e.stack);process.exitCode=1;});

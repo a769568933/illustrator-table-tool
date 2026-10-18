@@ -7,9 +7,9 @@
 namespace {
 constexpr wchar_t property[]=L"IllustratorTableTool.Sidebar";
 const wchar_t* labels[]={L"新建表格…",L"表格选择工具",L"合并单元格",L"拆分单元格",
-    L"上方插入行",L"下方插入行",L"左侧插入列",L"右侧插入列",L"删除所选行",L"删除所选列",L"转换普通对象",L"单元格样式…"};
+    L"上方插入行",L"下方插入行",L"左侧插入列",L"右侧插入列",L"删除所选行",L"删除所选列",L"转换普通对象",L"单元格样式…",L"平均行高",L"平均列宽"};
 }
-void Sidebar::create(SPBasicSuite* value,SPPluginRef self,Suites& suites,const std::array<AIMenuItemHandle,12>& items) {
+void Sidebar::create(SPBasicSuite* value,SPPluginRef self,Suites& suites,const std::array<AIMenuItemHandle,14>& items) {
     if(panel) return;basic=value;plugin=self;commands=items;traceStage("panel.create.start");
     auto panels=suites.get<AIPanelSuite>(kAIPanelSuite,kAIPanelVersion);
     AISize minimum{260,470};checked(panels->Create(plugin,ai::UnicodeString::FromUTF8("IllustratorTableTool.Sidebar"),
@@ -37,7 +37,7 @@ void Sidebar::create(SPBasicSuite* value,SPPluginRef self,Suites& suites,const s
 }
 void Sidebar::layout() {
     RECT bounds{};GetClientRect(window,&bounds);const int width=std::max(120,static_cast<int>(bounds.right)-24);
-    MoveWindow(status,12,12,width,58,TRUE);
+    MoveWindow(status,12,12,width,64,TRUE);
     const int gap=8,half=(width-gap)/2;
     for(std::size_t i=0;i<buttons.size();++i) {
         const int row=static_cast<int>(i/2),column=static_cast<int>(i%2);
@@ -78,7 +78,7 @@ LRESULT CALLBACK Sidebar::procedure(HWND window,UINT message,WPARAM wParam,LPARA
     if(message==WM_SIZE) self->layout();
     if(message==WM_COMMAND&&HIWORD(wParam)==BN_CLICKED) {
         const int id=LOWORD(wParam)-23000;
-        if(id>=0&&id<12) {self->invoke(id);return 0;}
+        if(id>=0&&id<static_cast<int>(self->commands.size())) {self->invoke(id);return 0;}
     }
     return CallWindowProcW(self->original,window,message,wParam,lParam);
 }

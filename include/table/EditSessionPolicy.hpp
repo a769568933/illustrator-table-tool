@@ -16,4 +16,5 @@ public:
 };
 bool mayAppendTyping(bool plainInput,bool batchOpen,bool standalone,std::int32_t batchToken,std::int32_t previousToken,bool ownTag);
 EditSession snapEditSelection(EditSession session,const std::vector<std::uint32_t>& boundaries);
+bool shouldBeginCellEdit(CellId current,CellId previous,bool sameTable,bool hostDoubleClick,bool shift,std::uint32_t elapsed,std::uint32_t interval,double distancePixels);
 }
