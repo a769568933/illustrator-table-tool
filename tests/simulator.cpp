@@ -86,9 +86,9 @@ int main(int argc,char** argv) {
             auto style=model.cellAt(selected.firstRow,selected.firstColumn).style;
             style.fill={1,0.92,0.70};style.fillEnabled=true;style.fontSize=18;model.setStyle(selected,style);
         } else if(action=="format"){
-            if(argc!=11)throw ValidationError("Missing style patch");const auto mask=integer(argv[6]);CellStylePatch patch;
+            if(argc!=12)throw ValidationError("Missing style patch");const auto mask=integer(argv[6]);CellStylePatch patch;
             if(mask&1)patch.font=decodeUtf8(inserted);if(mask&2)patch.fontSize=std::stod(argv[7]);if(mask&4)patch.alignment=integer(argv[8]);
-            if(mask&8)patch.verticalAlignment=integer(argv[9]);if(mask&16)patch.fillEnabled=integer(argv[10])!=0;model.patchStyle(selected,patch);
+            if(mask&8)patch.verticalAlignment=integer(argv[9]);if(mask&16)patch.fillEnabled=integer(argv[10])!=0;if(mask&32)patch.borderWidth=std::stod(argv[11]);model.patchStyle(selected,patch);
         } else if(action!="inspect"&&action!="create"&&!editing) throw ValidationError("Unknown simulation command");
         std::cout<<"{\"state\":"<<json(serialize(model))<<",\"rows\":"<<model.rows()<<",\"columns\":"<<model.columns()
             <<",\"width\":"<<model.width()<<",\"height\":"<<model.height()<<",\"selection\":["<<selected.firstRow<<','<<selected.firstColumn<<','<<selected.lastRow<<','<<selected.lastColumn<<"],\"cells\":[";
@@ -98,7 +98,7 @@ int main(int argc,char** argv) {
             auto b=Geometry::cellBounds(model,cell.id);
             std::cout<<"{\"id\":"<<cell.id<<",\"row\":"<<cell.row<<",\"column\":"<<cell.column<<",\"rowSpan\":"<<cell.rowSpan<<",\"columnSpan\":"<<cell.columnSpan
                 <<",\"x\":"<<b.left<<",\"y\":"<<b.top<<",\"width\":"<<b.right-b.left<<",\"height\":"<<b.bottom-b.top
-                <<",\"text\":"<<jsonText(cell.text)<<",\"size\":"<<cell.style.fontSize<<",\"fillEnabled\":"<<(cell.style.fillEnabled?"true":"false")<<",\"font\":"<<jsonText(cell.style.font)<<",\"alignment\":"<<cell.style.alignment<<",\"verticalAlignment\":"<<cell.style.verticalAlignment<<",\"fill\":["<<cell.style.fill.red<<','<<cell.style.fill.green<<','<<cell.style.fill.blue<<"],\"runs\":[";
+                <<",\"text\":"<<jsonText(cell.text)<<",\"size\":"<<cell.style.fontSize<<",\"borderWidth\":"<<cell.style.borderWidth<<",\"fillEnabled\":"<<(cell.style.fillEnabled?"true":"false")<<",\"font\":"<<jsonText(cell.style.font)<<",\"alignment\":"<<cell.style.alignment<<",\"verticalAlignment\":"<<cell.style.verticalAlignment<<",\"fill\":["<<cell.style.fill.red<<','<<cell.style.fill.green<<','<<cell.style.fill.blue<<"],\"runs\":[";
             bool firstRun=true;for(const auto& run:cell.formatting.runs){if(!firstRun)std::cout<<',';firstRun=false;
                 std::cout<<"{\"start\":"<<run.start<<",\"length\":"<<run.length<<",\"size\":"<<run.fontSize<<",\"font\":"<<jsonText(run.font)<<",\"color\":["<<run.color.red<<','<<run.color.green<<','<<run.color.blue<<"]}";}
             std::cout<<"]}";

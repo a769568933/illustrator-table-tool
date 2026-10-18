@@ -13,9 +13,21 @@ spec.loader.exec_module(server)
 
 @unittest.skipUnless(os.environ.get('TABLE_SIMULATOR'), 'Requires compiled table_simulator')
 class SimulationTests(unittest.TestCase):
+    def test_merge_empty_padding_and_line_width(self):
+        executable=Path(os.environ['TABLE_SIMULATOR'])
+        state=server.simulate(executable,{'action':'create','rows':1,'columns':3})
+        state=server.simulate(executable,{'action':'edit','state':state['state'],'row':0,'column':0,'anchor':0,'caret':0,'text':'Title'})
+        state=server.simulate(executable,{'action':'command','state':state['state'],'selection':[0,0,0,2],'command':0})
+        self.assertEqual(state['cells'][0]['text'],'Title')
+        state=server.simulate(executable,{'action':'format','state':state['state'],'selection':[0,0,0,2],'borderWidth':2.5})
+        self.assertEqual(state['cells'][0]['borderWidth'],2.5)
+        restored=server.simulate(executable,{'action':'inspect','state':state['state']})
+        self.assertEqual(restored['state'],state['state'])
+
     def test_transparent_font_and_alignment_roundtrip(self):
         executable=Path(os.environ['TABLE_SIMULATOR'])
         state=server.simulate(executable,{'action':'create','rows':2,'columns':2})
+        self.assertEqual(state['cells'][0]['font'],'宋体')
         try:
             state=server.simulate(executable,{'action':'format','state':state['state'],'selection':[0,0,0,1],'font':'宋体','fontSize':20,'alignment':1,'verticalAlignment':2,'fillEnabled':False})
         except ValueError as error:

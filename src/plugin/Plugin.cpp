@@ -93,7 +93,7 @@ void invalidate(Suites& suites) {
     checked(suites.get<AIAnnotatorSuite>(kAIAnnotatorSuite,kAIAnnotatorVersion)->InvalAnnotationRect(nullptr,&screen));
 }
 void startup(SPMessageData* data,Suites& suites,State& state) {
-    traceStage("plugin.start.0.2.4");
+    traceStage("plugin.start.0.2.5");
     state.basic=data->basic;state.plugin=data->self;
     state.editor.configure(state.basic,state.plugin,EditorHost{
         [&state]()->NativeTable* {return state.active&&*state.active<state.tables.size()?&state.tables[*state.active]:nullptr;},

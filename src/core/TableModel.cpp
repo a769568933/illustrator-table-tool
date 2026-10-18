@@ -11,6 +11,9 @@ void TableModel::patchStyle(CellRange range,const CellStylePatch& patch){
     if(range.firstColumn>range.lastColumn)std::swap(range.firstColumn,range.lastColumn);
     cellAt(range.firstRow,range.firstColumn);cellAt(range.lastRow,range.lastColumn);
     auto next=*this;
+    std::uint64_t borderRevision=0;
+    if(patch.borderWidth){for(const auto& cell:anchors)borderRevision=std::max(borderRevision,cell.style.revision);
+        if(borderRevision==std::numeric_limits<std::uint64_t>::max())throw ValidationError("Style revision limit");++borderRevision;}
     for(auto& cell:next.anchors){
         if(cell.row>range.lastRow||cell.column>range.lastColumn||cell.row+cell.rowSpan<=range.firstRow||cell.column+cell.columnSpan<=range.firstColumn)continue;
         if(cell.row<range.firstRow||cell.column<range.firstColumn||cell.row+cell.rowSpan-1>range.lastRow||cell.column+cell.columnSpan-1>range.lastColumn)
@@ -26,6 +29,7 @@ void TableModel::patchStyle(CellRange range,const CellStylePatch& patch){
         if(patch.alignment)cell.style.alignment=*patch.alignment;
         if(patch.verticalAlignment)cell.style.verticalAlignment=*patch.verticalAlignment;
         if(patch.fillEnabled)cell.style.fillEnabled=*patch.fillEnabled;
+        if(patch.borderWidth){cell.style.borderWidth=*patch.borderWidth;cell.style.revision=borderRevision;}
         validateStyle(cell.style);validateFormatting(cell.text,cell.formatting);
     }
     *this=std::move(next);
@@ -125,6 +129,30 @@ void TableModel::scale(double horizontal,double vertical) {
     if(!std::isfinite(next.width())||!std::isfinite(next.height())) throw ValidationError("Scaled dimensions overflow");
     *this=std::move(next);
 }
+namespace {
+std::optional<Cell> repairMergePadding(const Cell& cell){
+    if(cell.originals.empty()||cell.text!=cell.mergedText)return {};
+    auto originals=cell.originals;std::sort(originals.begin(),originals.end(),[](const OriginalCell& a,const OriginalCell& b){return a.row==b.row?a.column<b.column:a.row<b.row;});
+    std::u16string old;std::vector<std::pair<std::uint32_t,std::uint32_t>> pieces;bool empty=false;
+    for(std::size_t i=0;i<originals.size();++i){
+        const auto& text=originals[i].text;
+        if(old.size()+(i?1:0)+text.size()>maximumTextBytes)return {};
+        if(i)old+=u'\n';if(text.empty())empty=true;else pieces.push_back({static_cast<std::uint32_t>(old.size()),static_cast<std::uint32_t>(text.size())});old+=text;
+    }
+    if(!empty||old!=cell.text)return {};
+    auto result=cell;result.text.clear();result.formatting={};const auto source=materializeFormatting(cell.text,cell.formatting,cell.style);
+    for(const auto& piece:pieces){
+        const auto first=piece.first,last=first+piece.second;TextFormatting format;
+        for(auto run:source.runs){const auto start=std::max(first,run.start),end=std::min(last,run.start+run.length);if(start>=end)continue;
+            run.start=start-first;run.length=end-start;format.runs.push_back(std::move(run));}
+        int alignment=cell.style.alignment;for(const auto& p:source.paragraphs)if(p.start<=first)alignment=p.alignment;
+        format.paragraphs.push_back({0,alignment});
+        for(auto p:source.paragraphs)if(p.start>first&&p.start<=last){p.start-=first;format.paragraphs.push_back(p);}
+        appendFormattedText(result.text,result.formatting,std::u16string_view(cell.text).substr(first,piece.second),format,cell.style,!result.text.empty());
+    }
+    result.mergedText=result.text;return result;
+}
+}
 void TableModel::merge(CellRange range) {
     if(range.firstRow>range.lastRow) std::swap(range.firstRow,range.lastRow);
     if(range.firstColumn>range.lastColumn) std::swap(range.firstColumn,range.lastColumn);
@@ -138,13 +166,15 @@ void TableModel::merge(CellRange range) {
             throw ValidationError("Merge range cannot cut an existing merged cell");
         included.push_back(cell);
     }
-    if(included.size()<2) return;
+    if(included.size()==1){if(auto repaired=repairMergePadding(included.front())){
+        auto next=*this;for(auto& cell:next.anchors)if(cell.id==repaired->id){cell=std::move(*repaired);break;}*this=std::move(next);
+    }return;}
+    for(auto& cell:included)if(auto repaired=repairMergePadding(cell))cell=std::move(*repaired);
     std::sort(included.begin(),included.end(),[](const Cell& a,const Cell& b){return a.row==b.row ? a.column<b.column : a.row<b.row;});
     Cell merged=included.front(); merged.text.clear(); merged.originals.clear();merged.formatting={};
     merged.rowSpan=range.lastRow-range.firstRow+1; merged.columnSpan=range.lastColumn-range.firstColumn+1;
-    bool first=true;
     for(const auto& cell : included) {
-        appendFormattedText(merged.text,merged.formatting,cell.text,cell.formatting,cell.style,!first);first=false;
+        if(!cell.text.empty())appendFormattedText(merged.text,merged.formatting,cell.text,cell.formatting,cell.style,!merged.text.empty());
         if(cell.originals.empty()) merged.originals.push_back({cell.id,cell.row,cell.column,cell.text,cell.style,cell.formatting});
         else {
             auto saved=cell.originals;

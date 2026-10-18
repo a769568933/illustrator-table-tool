@@ -19,7 +19,7 @@ struct Color { double red=0, green=0, blue=0; };
 struct CellStyle {
     Color fill{1,1,1}, border{}, text{};
     double fontSize=12, borderWidth=0.75, padding=mm(1);
-    std::u16string font;
+    std::u16string font=u"宋体";
     int alignment=0; // left, center, right
     std::uint64_t revision=0; // Most recently styled cell wins a shared border.
     bool fillEnabled=false;
@@ -27,7 +27,7 @@ struct CellStyle {
 };
 struct CellStylePatch {
     std::optional<std::u16string> font;
-    std::optional<double> fontSize;
+    std::optional<double> fontSize,borderWidth;
     std::optional<int> alignment,verticalAlignment;
     std::optional<bool> fillEnabled;
 };

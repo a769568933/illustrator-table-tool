@@ -210,7 +210,7 @@ void styling() {
     style.fill.red=0;style.fontSize=std::numeric_limits<double>::infinity();
     rejects([&]{model.setStyle({0,0,0,0},style);});
     auto legacy=deserialize("ITT1\n1 1 2\n20\n20\n1\n1 0 0 1 1\n0\n\n0\n\n0\n");
-    expect(legacy.cellAt(0,0).style.fontSize==12,"legacy documents use default styles");
+    expect(legacy.cellAt(0,0).style.fontSize==12&&legacy.cellAt(0,0).style.font.empty(),"legacy documents keep original implicit font and default size");
 }
 void sidebarWorkflow() {
     using namespace table;
@@ -218,7 +218,7 @@ void sidebarWorkflow() {
     model.setText(model.cellAt(0,0).id,u"名称");model.setText(model.cellAt(0,1).id,u"价格");
     const auto original=serialize(model);
     model=applyCommand(model,{0,0,1,1},Command::Merge);
-    expect(model.cellAt(1,1).text==u"名称\n价格\n\n","sidebar merge retains row-major cell text");
+    expect(model.cellAt(1,1).text==u"名称\n价格","sidebar merge retains nonempty cell text without synthetic trailing lines");
     model=applyCommand(model,{0,0,0,0},Command::InsertRowBelow);
     expect(model.rows()==4&&model.cellAt(2,1).rowSpan==3,"sidebar insertion expands an intersected merge");
     model=applyCommand(model,{0,0,2,1},Command::Split);
@@ -274,9 +274,13 @@ void drag_cell_selection(){
 }
 void transparent_font_and_alignment_styles(){
     using namespace table;auto model=TableModel::create(2,2,100,80);
+    expect(model.cellAt(0,0).style.font==u"宋体","new tables default to Songti");
+    auto appended=model;appended.insertRows(2,1);
+    expect(appended.cellAt(2,0).style.font==u"宋体","newly inserted cells also default to Songti");
+    expect(deserialize(serialize(appended)).cellAt(2,0).style.font==u"宋体","default font persists through save and reopen");
     expect(!model.cellAt(0,0).style.fillEnabled,"new tables default to transparent cells");
     auto legacy=deserialize("ITT3\n1 1 2\n40\n100\n1\n1 0 0 1 1\n1 1 1 0 0 0 0 0 0 12 0.75 2.8346456692913389 0 0\n0\n\n0\n\n0\n0\n0\n\n0\n");
-    expect(legacy.cellAt(0,0).style.fillEnabled&&legacy.cellAt(0,0).style.verticalAlignment==0,"old ITT3 tables retain opaque fill and top alignment");
+    expect(legacy.cellAt(0,0).style.fillEnabled&&legacy.cellAt(0,0).style.verticalAlignment==0&&legacy.cellAt(0,0).style.font.empty(),"old ITT3 tables retain fill, alignment and implicit font");
     auto red=model.cellAt(0,0).style;red.text={1,0,0};red.fontSize=20;red.fillEnabled=true;model.setStyle({0,0,0,0},red);
     auto id=model.cellAt(0,0).id;model.setRichText(id,u"AB",{{{0,1,u"Arial",24,{0,0,1}},{1,1,u"Arial",12,{0,1,0}}},{{0,0}}});
     CellStylePatch patch;patch.font=u"宋体";patch.alignment=1;patch.verticalAlignment=2;
@@ -286,7 +290,7 @@ void transparent_font_and_alignment_styles(){
     expect(cell.style.fillEnabled&&!model.cellAt(0,1).style.fillEnabled&&cell.style.text.red==1&&cell.style.fontSize==20,"font and alignment preserve individual fill and size");
     expect(cell.formatting.runs.at(0).font==u"宋体"&&cell.formatting.runs.at(0).fontSize==24&&cell.formatting.runs.at(1).color.green==1,"font patch preserves rich text sizes and colors");
     expect(cell.formatting.paragraphs.at(0).alignment==1&&cell.style.verticalAlignment==2,"alignment updates paragraph overrides and vertical placement");
-    expect(model.cellAt(1,0).style.font.empty()&&model.cellAt(1,0).style.verticalAlignment==0,"style patch leaves unselected cells unchanged");
+    expect(model.cellAt(1,0).style.font==u"宋体"&&model.cellAt(1,0).style.verticalAlignment==0,"style patch leaves unselected cells unchanged");
     patch={};patch.fontSize=18;patch.fillEnabled=false;model.patchStyle({0,0,0,0},patch);
     expect(model.cellAt(0,0).formatting.runs.at(0).fontSize==18&&!model.cellAt(0,0).style.fillEnabled,"size and transparency patch apply without clearing formatting");
     model.merge({0,0,0,1});const auto saved=serialize(model);expect(saved.substr(0,5)=="ITT4\n","new style fields use versioned serialization");
@@ -295,7 +299,83 @@ void transparent_font_and_alignment_styles(){
     const auto before=serialize(restored);patch={};patch.verticalAlignment=3;rejects([&]{restored.patchStyle({0,0,1,1},patch);});
     expect(serialize(restored)==before,"invalid alignment leaves all cells unchanged");
 }
+void merged_empty_cells_and_border_width(){
+    using namespace table;auto model=TableModel::create(1,3,180,30);
+    auto id=model.cellAt(0,0).id;model.merge({0,0,0,2});
+    expect(model.cellAt(0,0).text.empty(),"merging empty cells must not create overflowing blank paragraphs");
+    model.split(id);model.setText(id,u"Title");model.merge({0,0,0,2});
+    expect(model.cellAt(0,0).text==u"Title","blank neighbours do not append synthetic lines to a label");
+    model.split(id);expect(model.cellAt(0,1).text.empty()&&model.cellAt(0,0).text==u"Title","split restores original empty cells");
+    CellStylePatch patch;patch.borderWidth=2.5;model.patchStyle({0,1,0,1},patch);
+    expect(model.cellAt(0,1).style.borderWidth==2.5&&model.cellAt(0,0).style.borderWidth==0.75,"line width changes only selected cells");
+    expect(model.cellAt(0,1).style.revision>model.cellAt(0,0).style.revision,"most recently changed line width owns shared border");
+    patch.borderWidth=0;model.patchStyle({0,1,0,1},patch);expect(model.cellAt(0,1).style.borderWidth==0,"zero line width removes stroke");
+    const auto before=serialize(model);patch.borderWidth=-1;rejects([&]{model.patchStyle({0,0,0,2},patch);});expect(serialize(model)==before,"invalid line width keeps model unchanged");
+}
+void repair_legacy_merge_padding(){
+    using namespace table;auto model=deserialize(R"ITT(ITT4
+1 3 4
+170.07874015748033
+113.38582677165356 113.38582677165356 113.38582677165356
+1
+1 0 0 1 3
+1 1 1 0 0 0 0 0 0 12 0.75 2.8346456692913389 0 0 0 0
+6
+宋体
+7
+Title
+
+
+1
+0 7 12 0 0 0
+6
+宋体
+3
+0 0
+6 0
+7 0
+7
+Title
+
+
+3
+1 0 0
+1 1 1 0 0 0 0 0 0 12 0.75 2.8346456692913389 0 0 0 0
+6
+宋体
+5
+Title
+1
+0 5 12 0 0 0
+6
+宋体
+1
+0 0
+2 0 1
+1 1 1 0 0 0 0 0 0 12 0.75 2.8346456692913389 0 0 0 0
+6
+宋体
+0
+
+0
+0
+3 0 2
+1 1 1 0 0 0 0 0 0 12 0.75 2.8346456692913389 0 0 0 0
+6
+宋体
+0
+
+0
+0
+)ITT");
+    const auto id=model.cellAt(0,0).id;auto style=model.cellAt(0,0).style;style.font=u"Arial";style.fontSize=22;model.setStyle({0,0,0,2},style);
+    model.merge({0,0,0,2});expect(model.cellAt(0,0).text==u"Title","repeat merge repairs proven legacy empty-cell padding");
+    expect(model.cellAt(0,0).formatting.runs.front().font==u"Arial"&&model.cellAt(0,0).formatting.runs.front().fontSize==22,"legacy repair preserves currently applied rich formatting");
+    model.split(id);expect(model.cellAt(0,0).text==u"Title"&&model.cellAt(0,1).text.empty(),"legacy repair preserves original cells for splitting");
+    model.setText(id,u"Title\n\n");model.merge({0,0,0,2});expect(model.cellAt(0,0).text==u"Title\n\n","manual newlines inside original text are preserved");
+    model.setText(id,u"Edited\n");model.merge({0,0,0,2});expect(model.cellAt(0,0).text==u"Edited\n","edited merged text must never be cleaned automatically");
+}
 int main() {
-    try { transparent_font_and_alignment_styles(); creation(); geometry(); interaction(); merging(); structure(); persistence(); styling(); sidebarWorkflow(); distribute_selected_tracks(); drag_cell_selection(); std::cout << checks << " checks passed\n"; return 0; }
+    try { repair_legacy_merge_padding(); merged_empty_cells_and_border_width(); transparent_font_and_alignment_styles(); creation(); geometry(); interaction(); merging(); structure(); persistence(); styling(); sidebarWorkflow(); distribute_selected_tracks(); drag_cell_selection(); std::cout << checks << " checks passed\n"; return 0; }
     catch (const std::exception& error) { std::cerr << "FAIL after " << checks << " checks: " << error.what() << '\n'; return 1; }
 }

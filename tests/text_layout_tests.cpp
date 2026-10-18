@@ -121,8 +121,16 @@ void nine_alignment_positions(){
     auto large=base;large.heightPt=8;large.style.verticalAlignment=2;
     auto clipped=layoutText(large);expect(clipped->overflows()&&clipped->caret(0).top>=large.style.padding,"overflow remains top anchored and editable");
 }
+void merged_blank_neighbours_do_not_overflow(){
+    auto model=TableModel::create(1,4,240,30);model.merge({0,0,0,3});const auto id=model.cellAt(0,0).id;
+    auto layout=[&]{const auto& cell=model.cellById(id);return layoutText({cell.text,cell.formatting,cell.style,240,30});};
+    expect(!layout()->overflows(),"blank merged cell must not report phantom overflow");
+    model.split(id);model.setText(id,u"Title");model.merge({0,0,0,3});
+    expect(!layout()->overflows(),"short merged label with empty neighbours must fit one line");
+    model.setText(id,u"A\nB\nC\nD\nE");expect(layout()->overflows(),"genuine multiline overflow remains detectable");
+}
 }
 int main(){try{
-    nine_alignment_positions();chinese_layout_clusters();edit_joined_cluster_caret();outline_holes_and_curves();mixed_size_and_paragraphs();overflow_and_empty();layout_failure_has_no_output();performance_records();
+    merged_blank_neighbours_do_not_overflow();nine_alignment_positions();chinese_layout_clusters();edit_joined_cluster_caret();outline_holes_and_curves();mixed_size_and_paragraphs();overflow_and_empty();layout_failure_has_no_output();performance_records();
     std::cout<<checks<<" layout checks passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

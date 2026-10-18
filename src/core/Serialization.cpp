@@ -126,13 +126,13 @@ TableModel deserialize(std::string_view data) {
     std::size_t totalOriginals=0;
     for(std::size_t i=0;i<count;++i) {
         Cell c;c.id=number<CellId>(in);c.row=number<int>(in);c.column=number<int>(in);c.rowSpan=number<int>(in);c.columnSpan=number<int>(in);
-        if(in.get()!='\n') invalid();c.style.fillEnabled=true;if(version!="ITT1") c.style=readStyle(in,version=="ITT4");
+        if(in.get()!='\n') invalid();c.style.fillEnabled=true;if(version!="ITT1") c.style=readStyle(in,version=="ITT4");else c.style.font.clear();
         c.text=readText(in);if(version=="ITT3"||version=="ITT4") c.formatting=readFormatting(in,c.text);c.mergedText=readText(in);
         auto originals=number<std::size_t>(in);if(originals>static_cast<std::size_t>(rows*cols)) invalid();
         totalOriginals+=originals;if(totalOriginals>static_cast<std::size_t>(rows*cols)) invalid();
         for(std::size_t j=0;j<originals;++j) {
             OriginalCell original;original.id=number<CellId>(in);original.row=number<int>(in);original.column=number<int>(in);
-            if(in.get()!='\n') invalid();original.style.fillEnabled=true;if(version!="ITT1") original.style=readStyle(in,version=="ITT4");
+            if(in.get()!='\n') invalid();original.style.fillEnabled=true;if(version!="ITT1") original.style=readStyle(in,version=="ITT4");else original.style.font.clear();
             original.text=readText(in);if(version=="ITT3"||version=="ITT4") original.formatting=readFormatting(in,original.text);c.originals.push_back(std::move(original));
         }
         model.anchors.push_back(std::move(c));

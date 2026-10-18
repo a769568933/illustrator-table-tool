@@ -7,6 +7,7 @@
 #include <string>
 #include <functional>
 #include "table/TableModel.hpp"
+#include "FontSearch.hpp"
 
 class Sidebar {
     SPBasicSuite* basic=nullptr;
@@ -18,8 +19,11 @@ class Sidebar {
     std::array<AIMenuItemHandle,14> commands{};
     std::array<HWND,14> buttons{};
     HWND fontChoice=nullptr,sizeField=nullptr,sizeApply=nullptr,transparent=nullptr;
+    HWND fontQuery=nullptr;
+    HWND lineField=nullptr,lineApply=nullptr;
+    FontSearch fontSearch;
     std::array<HWND,6> alignButtons{};
-    std::array<HWND,3> styleLabels{};
+    std::array<HWND,4> styleLabels{};
     std::vector<std::u16string> families;
     std::function<void(const table::CellStylePatch&)> styleHandler;
     bool busy=false,selectionEnabled=false;

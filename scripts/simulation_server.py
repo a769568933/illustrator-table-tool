@@ -25,9 +25,9 @@ def simulate(executable, payload):
             args.append(str(int(payload['command'])))
     standard_input=payload.get('state','')
     if action == 'format':
-        fields=('font','fontSize','alignment','verticalAlignment','fillEnabled')
+        fields=('font','fontSize','alignment','verticalAlignment','fillEnabled','borderWidth')
         mask=sum(1<<i for i,key in enumerate(fields) if key in payload)
-        args += [str(mask),str(float(payload.get('fontSize',12))),str(int(payload.get('alignment',0))),str(int(payload.get('verticalAlignment',0))),'1' if payload.get('fillEnabled',False) else '0']
+        args += [str(mask),str(float(payload.get('fontSize',12))),str(int(payload.get('alignment',0))),str(int(payload.get('verticalAlignment',0))),'1' if payload.get('fillEnabled',False) else '0',str(float(payload.get('borderWidth',0.75)))]
         font=payload.get('font','')
         if not isinstance(font,str):
             raise ValueError('Invalid font')
