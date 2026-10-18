@@ -73,6 +73,7 @@ void EditController::apply(Suites& suites,const table::EditChange& change,bool p
     session->commit(change,[&](const table::TableModel& model){
         host.mutation([&]{DocumentAdapter adapter(suites);if(change.addedRow)adapter.applyStructure(*native,model);else adapter.applyText(*native,model);});
     });
+    session->select(table::snapEditSelection(session->selection(),nativeCell(*native,session->selection().cell).layout->boundaries()));
     if(change.changed&&standalone&&!append)checked(undo->SetTagUS(tag,batchToken));
     batchOpen=plainInput&&standalone;preediting=false;preedit.clear();caretVisible=true;host.selectCell(session->selection().cell);
 }
@@ -146,7 +147,9 @@ void EditController::rebuild(Suites& suites){
     std::optional<std::pair<std::uint32_t,std::uint32_t>> composition;
     if(preediting){auto preview=table::replaceSelection(native->model,selection,preedit);const auto& cell=preview.model.cellById(selection.cell);
         layout=table::layoutText({cell.text,cell.formatting,cell.style,bounds.right-bounds.left,bounds.bottom-bounds.top});
-        const auto first=std::min(selection.anchor,selection.caret);composition={{first,first+static_cast<std::uint32_t>(preedit.size())}};
+        const auto first=std::min(selection.anchor,selection.caret);
+        const auto marked=table::snapEditSelection({selection.cell,first,first+static_cast<std::uint32_t>(preedit.size()),0},layout->boundaries());
+        composition={{marked.anchor,marked.caret}};
         display.anchor=display.caret=nearestStop(*layout,first+std::min(preeditCaret,static_cast<std::uint32_t>(preedit.size())));
     }
     auto views=suites.get<AIDocumentViewSuite>(kAIDocumentViewSuite,kAIDocumentViewVersion);

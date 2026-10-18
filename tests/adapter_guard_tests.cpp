@@ -47,6 +47,11 @@ AIErr AIAPI binary(ConstAIDictionaryRef dict,AIDictKey,void* value,std::size_t* 
 }
 AIErr AIAPI malformedRole(ConstAIDictionaryRef,AIDictKey,const char**){return kBadParameterErr;}
 int creations=0,rollbacks=0;
+ai::int32 protectedFlags=0;
+AIErr AIAPI protectedAttributes(AIArtHandle value,ai::int32,ai::int32* flags){*flags=id(value)==105?protectedFlags:0;return kNoErr;}
+AIErr AIAPI nestedChildren(AIArtHandle value,AIArtHandle* result){*result=handle<AIArtHandle>(id(value)==3?103:id(value)==103?104:id(value)==104?105:id(value)==6?203:id(value)==203?204:id(value)==204?205:0);return kNoErr;}
+AIErr AIAPI noSibling(AIArtHandle,AIArtHandle* result){*result=nullptr;return kNoErr;}
+AIErr AIAPI nestedType(AIArtHandle value,short* type){*type=id(value)==104?kCompoundPathArt:id(value)==105?kPathArt:kGroupArt;return kNoErr;}
 AIErr AIAPI noParent(AIArtHandle,AIArtHandle* result){*result=nullptr;return kNoErr;}
 AIErr AIAPI failThirdArt(ai::int16,ai::int16,AIArtHandle,AIArtHandle* result){
     if(++creations==3)return kBadParameterErr;*result=handle<AIArtHandle>(1000+creations);return kNoErr;
@@ -92,4 +97,16 @@ int main() {
         std::cerr<<"SDK path failure published a partial table or skipped rollback\n";return 1;
     }
     std::cout<<"SDK path failure preserves published model and requests context rollback\n";
+    art.GetArtUserAttr=protectedAttributes;art.GetArtFirstChild=nestedChildren;art.GetArtSibling=noSibling;art.GetArtType=nestedType;
+    auto healthy=cached;healthy.group=handle<AIArtHandle>(6);healthy.cells.front().content=handle<AIArtHandle>(203);
+    for(const auto flags:{kArtLocked,kArtHidden}){
+        protectedFlags=flags;creations=0;rejected=false;
+        try{adapter.applyText(cached,changed);}catch(...){rejected=true;}
+        if(!rejected||creations||cached.model.cellById(cell).text!=u"A"||adapter.valid(cached)){
+            std::cerr<<"Protected nested glyph was replaced or mutated\n";return 1;
+        }
+        if(!adapter.valid(healthy)){std::cerr<<"Protected table disabled healthy sibling\n";return 1;}
+    }
+    protectedFlags=0;if(!adapter.valid(cached)){std::cerr<<"Independent unprotected artwork was refused\n";return 1;}
+    std::cout<<"Nested locked and hidden glyphs refuse mutation before artwork creation\n";
 }

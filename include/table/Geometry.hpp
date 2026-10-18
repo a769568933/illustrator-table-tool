@@ -9,6 +9,7 @@ class Geometry {
 public:
     static Rect cellBounds(const TableModel& model, CellId id);
     static std::vector<Edge> visibleEdges(const TableModel& model);
-    static HitResult hitTest(const TableModel& model, Point point, double zoom, double tolerancePx);
+    static double screenDistance(Point from,Point to,double zoom,double scaleX=1,double scaleY=1);
+    static HitResult hitTest(const TableModel& model, Point point, double zoom, double tolerancePx,double scaleX=1,double scaleY=1);
 };
 }

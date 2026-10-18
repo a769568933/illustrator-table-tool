@@ -1,4 +1,5 @@
 #include "text/TextLayout.hpp"
+#include "table/EditSessionPolicy.hpp"
 #include <windows.h>
 #include <psapi.h>
 #include <algorithm>
@@ -25,6 +26,21 @@ void chinese_layout_clusters(){
     expect(chinese->caret(3).top>chinese->caret(0).top,"newline moves caret to next paragraph");
     expect(chinese->selection(0,6).size()>=2,"multiline highlight");
     expect(!chinese->overflows(),"short multiline content fits");
+}
+void edit_joined_cluster_caret(){
+    for(const auto& text:{std::u16string(u"\u0301"),std::u16string(u"e\n\u0301")}){
+        auto model=TableModel::create(1,1,100,40);const auto id=model.cellAt(0,0).id;model.setText(id,text);
+        const auto change=text.size()==1?replaceSelection(model,{id,0,0,0},u"e"):replaceSelection(model,{id,1,2,0},u"");
+        BoundEditSession session({1,2,3},{id,0,0,0});std::shared_ptr<const TextLayout> published;
+        session.commit(change,[&](const TableModel& next){const auto& cell=next.cellById(id);published=layoutText({cell.text,cell.formatting,cell.style,100,40});});
+        session.select(snapEditSelection(session.selection(),published->boundaries()));
+        expect(session.selection().caret==2&&session.selection().anchor==2,"committed selection snaps after joining a cluster");
+        expect(published->caret(session.selection().caret).bottom>0,"joined-cluster caret renders after publication");
+        auto marked=snapEditSelection({id,0,1,0},published->boundaries());
+        expect(marked.anchor==0&&marked.caret==2&&!published->selection(marked.anchor,marked.caret).empty(),"composition underline expands to joined cluster");
+        marked=snapEditSelection({id,2,1,0},published->boundaries());
+        expect(marked.anchor==2&&marked.caret==0,"reversed range preserves direction while covering cluster");
+    }
 }
 void outline_holes_and_curves(){
     auto r=request(u"O8中");r.style.font=u"Arial";auto layout=layoutText(r);
@@ -81,6 +97,6 @@ void performance_records(){
 }
 }
 int main(){try{
-    chinese_layout_clusters();outline_holes_and_curves();mixed_size_and_paragraphs();overflow_and_empty();layout_failure_has_no_output();performance_records();
+    chinese_layout_clusters();edit_joined_cluster_caret();outline_holes_and_curves();mixed_size_and_paragraphs();overflow_and_empty();layout_failure_has_no_output();performance_records();
     std::cout<<checks<<" layout checks passed\n";
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

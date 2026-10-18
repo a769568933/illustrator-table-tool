@@ -12,15 +12,20 @@ std::vector<double> positions(const std::vector<double>& sizes) {
     return result;
 }
 }
-HitResult Geometry::hitTest(const TableModel& model, Point point, double zoom, double tolerancePx) {
+double Geometry::screenDistance(Point from,Point to,double zoom,double scaleX,double scaleY){
+    if(!std::isfinite(zoom)||zoom<=0||!std::isfinite(scaleX)||scaleX<=0||!std::isfinite(scaleY)||scaleY<=0)throw ValidationError("Invalid screen transform");
+    return std::hypot((from.x-to.x)*scaleX,(from.y-to.y)*scaleY)*zoom;
+}
+HitResult Geometry::hitTest(const TableModel& model, Point point, double zoom, double tolerancePx,double scaleX,double scaleY) {
     if (!std::isfinite(zoom) || zoom<=0 || !std::isfinite(tolerancePx) || tolerancePx<0 ||
         !std::isfinite(point.x) || !std::isfinite(point.y)) throw ValidationError("Invalid hit-test parameters");
+    screenDistance(point,point,zoom,scaleX,scaleY);
     double closest=std::numeric_limits<double>::infinity();
     std::optional<Edge> best;
     for (const auto& edge : visibleEdges(model)) {
         double x=std::clamp(point.x,edge.from.x,edge.to.x);
         double y=std::clamp(point.y,edge.from.y,edge.to.y);
-        double distance=std::hypot(point.x-x,point.y-y)*zoom;
+        double distance=screenDistance(point,{x,y},zoom,scaleX,scaleY);
         if (distance<=tolerancePx && distance<closest) { best=edge; closest=distance; }
     }
     if (best) return {HitKind::Edge,0,best};

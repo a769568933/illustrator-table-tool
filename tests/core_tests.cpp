@@ -68,6 +68,17 @@ void geometry() {
 void interaction() {
     using namespace table;
     auto model=TableModel::create(2,2,100,60);
+    auto scaled=TableModel::create(2,2,4000,4000);
+    for(double zoom:{0.25,1.0,4.0})for(double sx:{0.1,1.0,10.0})for(double sy:{0.1,1.0,10.0}){
+        const auto near=Point{2000+2/(zoom*sx),1000};
+        auto vertical=Geometry::hitTest(scaled,near,zoom,3,sx,sy);
+        expect(vertical.kind==HitKind::Edge&&vertical.edge->vertical,"scaled vertical edge keeps pixel tolerance");
+        expect(Geometry::hitTest(scaled,{2000+4/(zoom*sx),1000},zoom,3,sx,sy).kind==HitKind::Cell,"scaled vertical cell outside tolerance");
+        auto horizontal=Geometry::hitTest(scaled,{1000,2000+2/(zoom*sy)},zoom,3,sx,sy);
+        expect(horizontal.kind==HitKind::Edge&&!horizontal.edge->vertical,"scaled horizontal edge keeps pixel tolerance");
+        Interaction drag;drag.pointerDown(scaled,near,false,zoom,sx,sy);expect(drag.dragging(),"interaction uses anisotropic pixel tolerance");
+    }
+    expect(std::abs(Geometry::screenDistance({0,0},{1,1},2,10,.1)-std::hypot(20,.2))<1e-9,"double click distance uses both transform axes");
     for (double zoom : {0.25,1.0,4.0}) {
         const auto hit=Geometry::hitTest(model,{50+2/zoom,15},zoom,3);
         expect(hit.kind==HitKind::Edge && hit.edge->vertical && hit.edge->track==1, "screen pixel tolerance at all zooms");

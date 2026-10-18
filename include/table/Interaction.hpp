@@ -13,7 +13,7 @@ public:
     const std::optional<CellRange>& selection() const { return selected; }
     const std::optional<TableModel>& preview() const { return candidate; }
     bool dragging() const { return boundary.has_value(); }
-    void pointerDown(const TableModel& model, Point point, bool shift, double zoom);
+    void pointerDown(const TableModel& model, Point point, bool shift, double zoom,double scaleX=1,double scaleY=1);
     void selectCell(const TableModel& model,CellId id);
     void pointerMove(Point point);
     std::optional<TableModel> pointerUp();

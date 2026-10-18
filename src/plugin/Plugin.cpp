@@ -176,7 +176,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
         for(std::size_t i=state.tables.size();i>0;--i) {
             const auto& table=state.tables[i-1];
             if(!adapter.valid(table)) continue;
-            if(table::Geometry::hitTest(table.model,local(table,message->cursor),zoom,3).kind!=table::HitKind::Outside) { state.active=i-1; break; }
+            if(table::Geometry::hitTest(table.model,local(table,message->cursor),zoom,3,table.scaleX,table.scaleY).kind!=table::HitKind::Outside) { state.active=i-1; break; }
         }
         if(!state.active) {
             state.editor.end(false);
@@ -193,10 +193,10 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
         auto& table=state.tables[*state.active];
         if(oldGroup!=table.group) {state.editor.end(false);state.interaction.clearSelection();state.lastCell=0;}
         auto point=local(table,message->cursor);
-        auto hit=table::Geometry::hitTest(table.model,point,zoom,3);
+        auto hit=table::Geometry::hitTest(table.model,point,zoom,3,table.scaleX,table.scaleY);
         auto now=GetTickCount64();
         if(hit.kind==table::HitKind::Cell && hit.cell==state.lastCell && now-state.lastDown<=GetDoubleClickTime() &&
-            std::hypot(point.x-state.lastPoint.x,point.y-state.lastPoint.y)*zoom<=4) {
+            table::Geometry::screenDistance(point,state.lastPoint,zoom,table.scaleX,table.scaleY)<=4) {
             state.lastCell=0; state.interaction.cancel();
             state.editor.begin(table,hit.cell,point);
             return;
@@ -205,7 +205,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
         bool shift=message->event && (message->event->modifiers&aiEventModifiers_shiftKey)!=0;
         if(!shift&&hit.kind==table::HitKind::Cell&&state.editor.pointer(table,hit.cell,point,false)){invalidate(suites);return;}
         if(state.editor.editing())state.editor.end(false);
-        state.interaction.pointerDown(table.model,point,shift,zoom);
+        state.interaction.pointerDown(table.model,point,shift,zoom,table.scaleX,table.scaleY);
         invalidate(suites);
     } else if(is(selector,kSelectorAIToolMouseDrag) || is(selector,kSelectorAIToolMouseUp)) {
         if(!state.active || *state.active>=state.tables.size() || !adapter.valid(state.tables[*state.active])) {
@@ -213,7 +213,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
         }
         auto& table=state.tables[*state.active];
         if(state.editor.editing()){
-            const auto point=local(table,message->cursor);const auto hit=table::Geometry::hitTest(table.model,point,zoom,0);
+            const auto point=local(table,message->cursor);const auto hit=table::Geometry::hitTest(table.model,point,zoom,0,table.scaleX,table.scaleY);
             if(hit.kind==table::HitKind::Cell)state.editor.pointer(table,hit.cell,point,true);
             invalidate(suites);return;
         }
@@ -227,7 +227,7 @@ void toolEvent(State& state,Suites& suites,const char* selector,AIToolMessage* m
         LPCTSTR cursor=state.placing ? IDC_CROSS : IDC_ARROW;
         if(state.active && *state.active<state.tables.size() && adapter.valid(state.tables[*state.active])) {
             const auto& table=state.tables[*state.active];
-            auto hit=table::Geometry::hitTest(table.model,local(table,message->cursor),zoom,3);
+            auto hit=table::Geometry::hitTest(table.model,local(table,message->cursor),zoom,3,table.scaleX,table.scaleY);
             if(hit.edge && hit.edge->track>0) cursor=hit.edge->vertical ? IDC_SIZEWE : IDC_SIZENS;
         }
         SetCursor(LoadCursor(nullptr,cursor));

@@ -15,4 +15,5 @@ public:
     void commit(const EditChange& change,const std::function<void(const TableModel&)>& publish);
 };
 bool mayAppendTyping(bool plainInput,bool batchOpen,bool standalone,std::int32_t batchToken,std::int32_t previousToken,bool ownTag);
+EditSession snapEditSelection(EditSession session,const std::vector<std::uint32_t>& boundaries);
 }

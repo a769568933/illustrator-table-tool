@@ -6,9 +6,9 @@ void Interaction::selectCell(const TableModel& model,CellId id) {
     const auto& cell=model.cellById(id);cancel();anchor=id;
     selected=CellRange{cell.row,cell.column,cell.row+cell.rowSpan-1,cell.column+cell.columnSpan-1};
 }
-void Interaction::pointerDown(const TableModel& model, Point point, bool shift, double zoom) {
+void Interaction::pointerDown(const TableModel& model, Point point, bool shift, double zoom,double scaleX,double scaleY) {
     cancel();
-    auto hit=Geometry::hitTest(model,point,zoom,3);
+    auto hit=Geometry::hitTest(model,point,zoom,3,scaleX,scaleY);
     if (hit.kind==HitKind::Edge && hit.edge->track>0) {
         source=model; candidate=model; boundary=hit.edge; start=point;
         return;
