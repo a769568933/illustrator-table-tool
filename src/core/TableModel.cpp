@@ -1,4 +1,5 @@
 #include "table/TableModel.hpp"
+#include "table/RichText.hpp"
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -31,6 +32,7 @@ void TableModel::setStyle(CellRange range,const CellStyle& value) {
             cell.row+cell.rowSpan-1>range.lastRow||cell.column+cell.columnSpan-1>range.lastColumn)
             throw ValidationError("Style range cannot cut a merged cell");
         cell.style=style;
+        cell.formatting={};
     }
     *this=std::move(next);
 }
@@ -63,9 +65,13 @@ const Cell& TableModel::cellById(CellId id) const {
     return *found;
 }
 void TableModel::setText(CellId id, const std::u16string& text) {
+    setRichText(id,text,{});
+}
+void TableModel::setRichText(CellId id,const std::u16string& text,const TextFormatting& formatting) {
+    validateFormatting(text,formatting);
     auto found=std::find_if(anchors.begin(),anchors.end(),[=](const Cell& c){return c.id==id;});
     if (found == anchors.end()) throw ValidationError("Unknown cell identifier");
-    found->text=text;
+    auto next=*found;next.text=text;next.formatting=formatting;*found=std::move(next);
 }
 void TableModel::resizeBoundary(bool vertical, int boundary, double delta) {
     auto& sizes=vertical ? columnWidths : rowHeights;
@@ -100,16 +106,16 @@ void TableModel::merge(CellRange range) {
     }
     if(included.size()<2) return;
     std::sort(included.begin(),included.end(),[](const Cell& a,const Cell& b){return a.row==b.row ? a.column<b.column : a.row<b.row;});
-    Cell merged=included.front(); merged.text.clear(); merged.originals.clear();
+    Cell merged=included.front(); merged.text.clear(); merged.originals.clear();merged.formatting={};
     merged.rowSpan=range.lastRow-range.firstRow+1; merged.columnSpan=range.lastColumn-range.firstColumn+1;
     bool first=true;
     for(const auto& cell : included) {
-        if(!first) merged.text+=u'\n'; merged.text+=cell.text; first=false;
-        if(cell.originals.empty()) merged.originals.push_back({cell.id,cell.row,cell.column,cell.text,cell.style});
+        appendFormattedText(merged.text,merged.formatting,cell.text,cell.formatting,cell.style,!first);first=false;
+        if(cell.originals.empty()) merged.originals.push_back({cell.id,cell.row,cell.column,cell.text,cell.style,cell.formatting});
         else {
             auto saved=cell.originals;
             if(cell.text!=cell.mergedText) for(auto& original : saved)
-                if(original.row==cell.row && original.column==cell.column) original.text=cell.text;
+                if(original.row==cell.row && original.column==cell.column) {original.text=cell.text;original.formatting=cell.formatting;}
             merged.originals.insert(merged.originals.end(),saved.begin(),saved.end());
         }
     }
@@ -129,7 +135,8 @@ void TableModel::split(CellId id) {
     for(const auto& original : cell.originals) {
         Cell restored{original.id,original.row,original.column,1,1,original.text};
         restored.style=original.style;
-        if(original.row==cell.row && original.column==cell.column && cell.text!=cell.mergedText) restored.text=cell.text;
+        restored.formatting=original.formatting;
+        if(original.row==cell.row && original.column==cell.column && cell.text!=cell.mergedText) {restored.text=cell.text;restored.formatting=cell.formatting;}
         next.anchors.push_back(std::move(restored));
     }
     *this=std::move(next);
@@ -181,8 +188,8 @@ void TableModel::changeTracks(bool vertical,int first,int count,bool insert) {
             const int oldBegin=begin, oldSpan=span;
             const int overlap=std::max(0,std::min(begin+span,first+count)-std::max(begin,first));
             if(overlap==oldSpan) continue;
-            std::u16string anchorText;
-            for(const auto& original : cell.originals) if(original.id==cell.id) anchorText=original.text;
+            OriginalCell savedAnchor{};
+            for(const auto& original : cell.originals) if(original.id==cell.id) savedAnchor=original;
             span-=overlap;
             begin=begin>=first+count ? begin-count : begin>=first ? first : begin;
             cell.originals.erase(std::remove_if(cell.originals.begin(),cell.originals.end(),[&](const OriginalCell& original){
@@ -192,7 +199,12 @@ void TableModel::changeTracks(bool vertical,int first,int count,bool insert) {
             if(oldBegin>=first && oldBegin<first+count) {
                 for(auto& original : cell.originals) if(original.row==cell.row && original.column==cell.column) {
                     original.id=cell.id;
-                    if(!anchorText.empty()) original.text=anchorText+(original.text.empty() ? u"" : u"\n"+original.text);
+                    if(!savedAnchor.text.empty()) {
+                        std::u16string joined;TextFormatting joinedFormat;
+                        appendFormattedText(joined,joinedFormat,savedAnchor.text,savedAnchor.formatting,savedAnchor.style,false);
+                        if(!original.text.empty()) appendFormattedText(joined,joinedFormat,original.text,original.formatting,original.style,true);
+                        original.text=std::move(joined);original.formatting=std::move(joinedFormat);
+                    }
                 }
             }
             survivors.push_back(std::move(cell));

@@ -174,8 +174,8 @@ void persistence() {
     rejects([&]{deserialize(encoded.substr(0,encoded.size()/2));});
     rejects([&]{deserialize(encoded+"unexpected data");});
     rejects([]{deserialize("ITT1\n100 50 1\n");});
-    auto bad=model; bad.setText(id,std::u16string(1,static_cast<char16_t>(0xd800)));
-    rejects([&]{serialize(bad);});
+    auto bad=model;
+    rejects([&]{bad.setText(id,std::u16string(1,static_cast<char16_t>(0xd800)));});
     std::string duplicate="ITT1\n1 2 3\n10\n10 10\n2\n1 0 0 1 1\n0\n\n0\n\n0\n1 0 1 1 1\n0\n\n0\n\n0\n";
     rejects([&]{deserialize(duplicate);});
     auto scaled=TableModel::create(2,2,100,60); auto scaledId=scaled.cellAt(0,0).id;

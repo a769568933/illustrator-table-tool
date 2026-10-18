@@ -23,7 +23,15 @@ struct CellStyle {
     std::uint64_t revision=0; // Most recently styled cell wins a shared border.
 };
 void validateStyle(const CellStyle& style);
-struct OriginalCell { CellId id; int row; int column; std::u16string text; CellStyle style{}; };
+struct TextRun {
+    std::uint32_t start=0,length=0;
+    std::u16string font;
+    double fontSize=12;
+    Color color{};
+};
+struct ParagraphRun { std::uint32_t start=0; int alignment=0; };
+struct TextFormatting { std::vector<TextRun> runs; std::vector<ParagraphRun> paragraphs; };
+struct OriginalCell { CellId id; int row; int column; std::u16string text; CellStyle style{}; TextFormatting formatting{}; };
 struct Cell {
     CellId id = 0;
     int row = 0;
@@ -34,6 +42,7 @@ struct Cell {
     std::vector<OriginalCell> originals = {};
     std::u16string mergedText = {};
     CellStyle style{};
+    TextFormatting formatting{};
 };
 struct Edge {
     Point from;

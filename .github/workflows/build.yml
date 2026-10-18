@@ -20,7 +20,7 @@ jobs:
         run: cmake -S . -B build/core -A x64 -T v142 -DTABLE_BUILD_PLUGIN=OFF
       - name: Compile core tests
         run: cmake --build build/core --config Release --parallel 2
-      - name: Test table model and geometry
+      - name: Test model-owned editing and Windows glyph outlines
         run: ctest --test-dir build/core -C Release --output-on-failure
       - name: Simulate repeated sidebar workflows
         shell: pwsh
